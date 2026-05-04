@@ -1,0 +1,205 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  firstName String?
+  lastName  String?
+  role      Role     @default(USER)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  projects  Project[]
+  apiKeys   ApiKey[]
+  auditLogs AuditLog[]
+
+  @@map("users")
+}
+
+model Project {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  apiKey          String   @unique @default(cuid())
+  rateLimit       Int      @default(1000)
+  rateLimitWindow Int      @default(3600)
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  events        Event[]
+  notifications Notification[]
+  channels      NotificationChannel[]
+  auditLogs     AuditLog[]
+
+  @@index([userId])
+  @@map("projects")
+}
+
+model ApiKey {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId String
+  name      String
+  active    Boolean  @default(true)
+  lastUsed  DateTime?
+  createdAt DateTime @default(now())
+  expiresAt DateTime?
+
+  @@index([userId])
+  @@index([projectId])
+  @@map("api_keys")
+}
+
+model Event {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  type      String
+  data      Json
+  status    EventStatus @default(PENDING)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  notifications Notification[]
+
+  @@index([projectId])
+  @@index([type])
+  @@index([status])
+  @@map("events")
+}
+
+model NotificationChannel {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  type      ChannelType
+  config    Json
+  name      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  notifications Notification[]
+
+  @@unique([projectId, type])
+  @@index([projectId])
+  @@map("notification_channels")
+}
+
+model Notification {
+  id            String   @id @default(cuid())
+  projectId     String
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  eventId       String
+  event         Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  channelId     String
+  channel       NotificationChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  recipient     String
+  subject       String?
+  template      String
+  templateData  Json     @default("{}")
+  status        NotificationStatus @default(PENDING)
+  retryCount    Int      @default(0)
+  maxRetries    Int      @default(3)
+  nextRetryAt   DateTime?
+  lastError     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  sentAt        DateTime?
+
+  deliveryLogs DeliveryLog[]
+
+  @@index([projectId])
+  @@index([eventId])
+  @@index([channelId])
+  @@index([status])
+  @@index([recipient])
+  @@map("notifications")
+}
+
+model DeliveryLog {
+  id             String   @id @default(cuid())
+  notificationId String
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  status         DeliveryStatus
+  statusCode     Int?
+  response       Json?
+  error          String?
+  attemptedAt    DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  @@index([notificationId])
+  @@index([status])
+  @@map("delivery_logs")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  action    String
+  resource  String
+  details   Json?
+  changes   Json?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([action])
+  @@map("audit_logs")
+}
+
+enum Role {
+  ADMIN
+  USER
+  VIEWER
+}
+
+enum EventStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ChannelType {
+  EMAIL
+  TELEGRAM
+  WEBHOOK
+  SMS
+}
+
+enum NotificationStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  RETRYING
+}
+
+enum DeliveryStatus {
+  SUCCESS
+  FAILED
+  PENDING
+  RETRYING
+}

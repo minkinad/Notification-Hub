@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "ES2021",
+    "lib": ["ES2021"],
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "allowSyntheticDefaultImports": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "@config/*": ["src/config/*"],
+      "@modules/*": ["src/modules/*"],
+      "@common/*": ["src/common/*"],
+      "@guards/*": ["src/common/guards/*"],
+      "@strategies/*": ["src/common/strategies/*"],
+      "@decorators/*": ["src/common/decorators/*"],
+      "@filters/*": ["src/common/filters/*"],
+      "@pipes/*": ["src/common/pipes/*"],
+      "@interceptors/*": ["src/common/interceptors/*"],
+      "@utils/*": ["src/common/utils/*"],
+      "@constants/*": ["src/common/constants/*"],
+      "@dto/*": ["src/common/dto/*"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "test", "**/*spec.ts"]
+}

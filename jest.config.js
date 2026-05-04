@@ -1,0 +1,26 @@
+module.exports = {
+  moduleFileExtensions: ['js', 'json', 'ts'],
+  rootDir: '.',
+  testEnvironment: 'node',
+  testRegex: '.*\\.spec\\.ts$',
+  transform: {
+    '^.+\\.(t|j)s$': 'ts-jest',
+  },
+  collectCoverageFrom: ['src/**/*.ts'],
+  coverageDirectory: './coverage',
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/src/$1',
+    '^@config/(.*)$': '<rootDir>/src/config/$1',
+    '^@modules/(.*)$': '<rootDir>/src/modules/$1',
+    '^@common/(.*)$': '<rootDir>/src/common/$1',
+    '^@guards/(.*)$': '<rootDir>/src/common/guards/$1',
+    '^@strategies/(.*)$': '<rootDir>/src/common/strategies/$1',
+    '^@decorators/(.*)$': '<rootDir>/src/common/decorators/$1',
+    '^@filters/(.*)$': '<rootDir>/src/common/filters/$1',
+    '^@pipes/(.*)$': '<rootDir>/src/common/pipes/$1',
+    '^@interceptors/(.*)$': '<rootDir>/src/common/interceptors/$1',
+    '^@utils/(.*)$': '<rootDir>/src/common/utils/$1',
+    '^@constants/(.*)$': '<rootDir>/src/common/constants/$1',
+    '^@dto/(.*)$': '<rootDir>/src/common/dto/$1',
+  },
+};
