@@ -4,6 +4,7 @@ import { ProjectsService } from './projects.service';
 describe('ProjectsService', () => {
   const prisma = {
     project: {
+      create: jest.fn(),
       findUnique: jest.fn(),
       findFirst: jest.fn(),
     },
@@ -23,6 +24,7 @@ describe('ProjectsService', () => {
       description: null,
       apiKey: 'pk_123',
       rateLimit: 1000,
+      rateLimitWindow: 3600,
       active: true,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -30,7 +32,9 @@ describe('ProjectsService', () => {
 
     prisma.project.findFirst.mockResolvedValue(project);
 
-    await expect(service.findOne('project-1', 'user-1')).resolves.toEqual(project);
+    await expect(service.findOne('project-1', 'user-1')).resolves.toEqual(
+      project,
+    );
     expect(prisma.project.findFirst).toHaveBeenCalledWith({
       where: { id: 'project-1', userId: 'user-1' },
       select: {
@@ -39,6 +43,7 @@ describe('ProjectsService', () => {
         description: true,
         apiKey: true,
         rateLimit: true,
+        rateLimitWindow: true,
         active: true,
         createdAt: true,
         updatedAt: true,
@@ -46,12 +51,51 @@ describe('ProjectsService', () => {
     });
   });
 
+  it('includes rate limit window in project creation response', async () => {
+    prisma.project.create.mockResolvedValue({
+      id: 'project-1',
+      name: 'Main Project',
+      description: null,
+      apiKey: 'pk_123',
+      rateLimit: 1000,
+      rateLimitWindow: 3600,
+      active: true,
+      createdAt: new Date(),
+    });
+
+    await service.create('user-1', {
+      name: 'Main Project',
+      rateLimit: 1000,
+      rateLimitWindow: 3600,
+    });
+
+    expect(prisma.project.create).toHaveBeenCalledWith({
+      data: {
+        name: 'Main Project',
+        rateLimit: 1000,
+        rateLimitWindow: 3600,
+        userId: 'user-1',
+        apiKey: expect.stringMatching(/^pk_/),
+      },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        apiKey: true,
+        rateLimit: true,
+        rateLimitWindow: true,
+        active: true,
+        createdAt: true,
+      },
+    });
+  });
+
   it('throws when project does not exist during ownership check', async () => {
     prisma.project.findUnique.mockResolvedValue(null);
 
-    await expect(service.ensureOwnedProject('missing', 'user-1')).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
+    await expect(
+      service.ensureOwnedProject('missing', 'user-1'),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('throws when project belongs to another user', async () => {
@@ -60,8 +104,8 @@ describe('ProjectsService', () => {
       userId: 'user-2',
     });
 
-    await expect(service.ensureOwnedProject('project-1', 'user-1')).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    await expect(
+      service.ensureOwnedProject('project-1', 'user-1'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });

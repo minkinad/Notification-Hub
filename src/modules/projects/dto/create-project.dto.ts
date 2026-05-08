@@ -37,4 +37,15 @@ export class CreateProjectDto {
   @Min(1)
   @Max(100000)
   rateLimit?: number;
+
+  @ApiProperty({
+    description: 'Rate limit window in seconds',
+    example: 3600,
+    required: false,
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(86400)
+  rateLimitWindow?: number;
 }

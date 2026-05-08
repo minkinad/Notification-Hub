@@ -26,11 +26,11 @@ export class ProjectsService {
         description: true,
         apiKey: true,
         rateLimit: true,
+        rateLimitWindow: true,
         active: true,
         createdAt: true,
       },
     });
-
   }
 
   async findAll(userId: string, skip = 0, take = 10) {
@@ -45,6 +45,8 @@ export class ProjectsService {
           name: true,
           description: true,
           apiKey: true,
+          rateLimit: true,
+          rateLimitWindow: true,
           active: true,
           createdAt: true,
         },
@@ -70,6 +72,7 @@ export class ProjectsService {
         description: true,
         apiKey: true,
         rateLimit: true,
+        rateLimitWindow: true,
         active: true,
         createdAt: true,
         updatedAt: true,
@@ -95,6 +98,7 @@ export class ProjectsService {
         description: true,
         apiKey: true,
         rateLimit: true,
+        rateLimitWindow: true,
         active: true,
         createdAt: true,
         updatedAt: true,

@@ -36,6 +36,7 @@ async function main() {
       userId: user.id,
       apiKey: 'test-api-key-12345',
       rateLimit: 1000,
+      rateLimitWindow: 3600,
     },
   });
 
@@ -48,6 +49,7 @@ async function main() {
       type: 'EMAIL',
       name: 'Email Channel',
       config: {
+        to: 'alerts@notification-hub.com',
         provider: 'smtp',
         from: 'noreply@notification-hub.com',
       },
@@ -60,6 +62,7 @@ async function main() {
       type: 'TELEGRAM',
       name: 'Telegram Channel',
       config: {
+        chatId: '@notification_hub_alerts',
         botToken: process.env.TELEGRAM_BOT_TOKEN || 'test-token',
       },
     },

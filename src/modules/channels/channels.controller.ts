@@ -20,6 +20,7 @@ import { CurrentUser } from '@common/decorators/current-user.decorator';
 import { JwtGuard } from '@common/guards/jwt.guard';
 import { JwtUser } from '@common/types/jwt-user.interface';
 import { ChannelsService } from './channels.service';
+import { ChannelListQueryDto } from './dto/channel-list-query.dto';
 import { CreateChannelDto } from './dto/create-channel.dto';
 import { UpdateChannelDto } from './dto/update-channel.dto';
 
@@ -47,9 +48,9 @@ export class ChannelsController {
   @ApiResponse({ status: 200, description: 'Channels list retrieved' })
   async findAll(
     @CurrentUser() user: JwtUser,
-    @Query('projectId') projectId: string,
+    @Query() query: ChannelListQueryDto,
   ) {
-    return this.channelsService.findAll(user.id, projectId);
+    return this.channelsService.findAll(user.id, query.projectId);
   }
 
   @Get(':id')

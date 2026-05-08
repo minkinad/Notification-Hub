@@ -42,6 +42,17 @@ export class UpdateProjectDto {
   rateLimit?: number;
 
   @ApiProperty({
+    description: 'Rate limit window in seconds',
+    example: 7200,
+    required: false,
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(86400)
+  rateLimitWindow?: number;
+
+  @ApiProperty({
     description: 'Whether the project is active',
     example: true,
     required: false,

@@ -10,6 +10,7 @@ It is designed as the core of a centralized notification platform for SaaS produ
 - User profile management
 - Admin-only user listing
 - Project isolation with per-project API keys
+- Configurable per-project `rateLimit` and `rateLimitWindow`
 - Channel management for `EMAIL`, `TELEGRAM`, `WEBHOOK`, and `SMS`
 - Event ingestion through authenticated API calls or `x-api-key`
 - Automatic notification creation for active project channels
@@ -213,7 +214,8 @@ curl -X POST http://localhost:3000/api/v1/projects \
   -d '{
     "name": "Billing Platform",
     "description": "Project for billing notifications",
-    "rateLimit": 1000
+    "rateLimit": 1000,
+    "rateLimitWindow": 3600
   }'
 ```
 
@@ -232,6 +234,13 @@ curl -X POST http://localhost:3000/api/v1/channels \
     }
   }'
 ```
+
+Channel config rules:
+
+- `EMAIL`: requires `to` or `email`
+- `TELEGRAM`: requires `chatId` or `username`
+- `WEBHOOK`: requires a valid `url`
+- `SMS`: requires `phone`
 
 ### Ingest an event with project API key
 
