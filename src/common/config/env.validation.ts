@@ -5,10 +5,14 @@ export const envValidationSchema = Joi.object({
     .valid('development', 'test', 'production')
     .default('development'),
   PORT: Joi.number().port().default(3000),
-  DATABASE_URL: Joi.string().uri({ scheme: ['postgres', 'postgresql'] }).required(),
+  DATABASE_URL: Joi.string()
+    .uri({ scheme: ['postgres', 'postgresql'] })
+    .required(),
   JWT_SECRET: Joi.string().min(16).required(),
   JWT_EXPIRATION: Joi.string().default('7d'),
-  REDIS_URL: Joi.string().uri({ scheme: ['redis'] }).optional(),
+  REDIS_URL: Joi.string()
+    .uri({ scheme: ['redis'] })
+    .optional(),
   REDIS_HOST: Joi.string().default('localhost'),
   REDIS_PORT: Joi.number().port().default(6379),
   CORS_ORIGIN: Joi.string().default('*'),

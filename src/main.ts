@@ -37,7 +37,9 @@ async function bootstrap() {
 
   const config = new DocumentBuilder()
     .setTitle('Notification Hub API')
-    .setDescription('Event-driven notification processing and delivery platform')
+    .setDescription(
+      'Event-driven notification processing and delivery platform',
+    )
     .setVersion('1.0.0')
     .addTag('auth', 'Authentication endpoints')
     .addTag('users', 'User management')

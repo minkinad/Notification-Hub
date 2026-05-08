@@ -17,7 +17,10 @@ export class EventsService {
   ) {}
 
   async create(userId: string, createEventDto: CreateEventDto) {
-    await this.projectsService.ensureOwnedProject(createEventDto.projectId, userId);
+    await this.projectsService.ensureOwnedProject(
+      createEventDto.projectId,
+      userId,
+    );
 
     return this.createEventRecord(createEventDto.projectId, {
       type: createEventDto.type,
@@ -35,12 +38,7 @@ export class EventsService {
     return this.createEventRecord(project.id, ingestEventDto);
   }
 
-  async findAll(
-    userId: string,
-    query: EventListQueryDto,
-    skip = 0,
-    take = 10,
-  ) {
+  async findAll(userId: string, query: EventListQueryDto, skip = 0, take = 10) {
     const normalizedTake = Math.min(Math.max(take, 1), 100);
     const where: Prisma.EventWhereInput = {
       project: {
@@ -128,7 +126,8 @@ export class EventsService {
         projectId,
         type: payload.type,
         data: payload.data as Prisma.InputJsonValue,
-        status: channels.length > 0 ? EventStatus.PROCESSING : EventStatus.PENDING,
+        status:
+          channels.length > 0 ? EventStatus.PROCESSING : EventStatus.PENDING,
       },
     });
 
@@ -159,11 +158,15 @@ export class EventsService {
     const typedConfig = this.asRecord(config);
 
     if (channelType === ChannelType.EMAIL) {
-      return String(typedConfig.to ?? typedConfig.email ?? 'unconfigured-email');
+      return String(
+        typedConfig.to ?? typedConfig.email ?? 'unconfigured-email',
+      );
     }
 
     if (channelType === ChannelType.TELEGRAM) {
-      return String(typedConfig.chatId ?? typedConfig.username ?? 'unconfigured-chat');
+      return String(
+        typedConfig.chatId ?? typedConfig.username ?? 'unconfigured-chat',
+      );
     }
 
     if (channelType === ChannelType.WEBHOOK) {
@@ -173,7 +176,10 @@ export class EventsService {
     return String(typedConfig.phone ?? 'unconfigured-recipient');
   }
 
-  private resolveSubject(channelType: ChannelType, eventType: string): string | null {
+  private resolveSubject(
+    channelType: ChannelType,
+    eventType: string,
+  ): string | null {
     if (channelType === ChannelType.WEBHOOK) {
       return null;
     }

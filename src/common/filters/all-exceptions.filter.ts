@@ -33,7 +33,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
       statusCode = exception.getStatus();
       const exceptionResponse = exception.getResponse();
       if (typeof exceptionResponse === 'object') {
-        const typedResponse = exceptionResponse as { message?: string | string[] };
+        const typedResponse = exceptionResponse as {
+          message?: string | string[];
+        };
         message = Array.isArray(typedResponse.message)
           ? typedResponse.message.join(', ')
           : typedResponse.message || exception.message;
@@ -43,7 +45,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
       }
     } else if (exception instanceof Error) {
       message = exception.message;
-      this.logger.error(`Unhandled error: ${exception.message}`, exception.stack);
+      this.logger.error(
+        `Unhandled error: ${exception.message}`,
+        exception.stack,
+      );
     } else {
       this.logger.error(`Unknown error: ${JSON.stringify(exception)}`);
     }

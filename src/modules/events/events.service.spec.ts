@@ -55,7 +55,10 @@ describe('EventsService', () => {
       data: { userId: 'user-1' },
     });
 
-    expect(projectsService.ensureOwnedProject).toHaveBeenCalledWith('project-1', 'user-1');
+    expect(projectsService.ensureOwnedProject).toHaveBeenCalledWith(
+      'project-1',
+      'user-1',
+    );
     expect(prisma.event.create).toHaveBeenCalledWith({
       data: {
         projectId: 'project-1',

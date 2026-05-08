@@ -14,10 +14,12 @@ export class HealthService {
       timestamp: new Date().toISOString(),
       uptimeSeconds: Math.round(process.uptime()),
       dependencies: {
-        databaseConfigured: Boolean(this.configService.get<string>('DATABASE_URL')),
+        databaseConfigured: Boolean(
+          this.configService.get<string>('DATABASE_URL'),
+        ),
         redisConfigured: Boolean(
           this.configService.get<string>('REDIS_URL') ||
-            this.configService.get<string>('REDIS_HOST'),
+          this.configService.get<string>('REDIS_HOST'),
         ),
       },
     };

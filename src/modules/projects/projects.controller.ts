@@ -87,7 +87,10 @@ export class ProjectsController {
   @Version('1')
   @ApiOperation({ summary: 'Regenerate project API key' })
   @ApiResponse({ status: 200, description: 'API key regenerated' })
-  async regenerateApiKey(@Param('id') id: string, @CurrentUser() user: JwtUser) {
+  async regenerateApiKey(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtUser,
+  ) {
     return this.projectsService.regenerateApiKey(id, user.id);
   }
 }

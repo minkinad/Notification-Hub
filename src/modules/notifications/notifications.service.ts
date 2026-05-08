@@ -102,7 +102,9 @@ export class NotificationsService {
     const notification = await this.findOne(id, userId);
 
     if (notification.status === NotificationStatus.SENT) {
-      throw new BadRequestException('Delivered notifications cannot be retried');
+      throw new BadRequestException(
+        'Delivered notifications cannot be retried',
+      );
     }
 
     if (notification.retryCount >= notification.maxRetries) {
