@@ -22,7 +22,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "prisma:validate": "DATABASE_URL=${DATABASE_URL:-postgresql://user:password@localhost:5432/notification_hub} prisma validate",
-    "seed": "ts-node prisma/seed.ts"
+    "seed": "ts-node prisma/seed.ts",
+    "ci:verify": "npm run prisma:validate && npm run prisma:generate && npm run lint && npm test && npm run build"
   },
   "dependencies": {
     "@nestjs/bullmq": "^11.0.4",
