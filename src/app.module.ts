@@ -1,9 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { envValidationSchema } from '@common/config/env.validation';
-import { RolesGuard } from '@common/guards/roles.guard';
 import { PrismaModule } from '@common/prisma/prisma.module';
 import { RedisModule } from '@common/redis/redis.module';
 import { QueueModule } from '@common/queue/queue.module';
@@ -41,12 +39,6 @@ import { HealthModule } from '@modules/health/health.module';
     NotificationsModule,
     ChannelsModule,
     HealthModule,
-  ],
-  providers: [
-    {
-      provide: APP_GUARD,
-      useClass: RolesGuard,
-    },
   ],
 })
 export class AppModule {}

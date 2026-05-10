@@ -18,6 +18,7 @@ import {
 import { Role } from '@prisma/client';
 import { CurrentUser } from '@common/decorators/current-user.decorator';
 import { Roles } from '@common/decorators/roles.decorator';
+import { RolesGuard } from '@common/guards/roles.guard';
 import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { JwtGuard } from '@common/guards/jwt.guard';
@@ -52,6 +53,7 @@ export class UsersController {
   @Get()
   @Version('1')
   @Roles(Role.ADMIN)
+  @UseGuards(RolesGuard)
   @ApiOperation({ summary: 'List all users' })
   @ApiResponse({ status: 200, description: 'Users list retrieved' })
   async getAllUsers(
