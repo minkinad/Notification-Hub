@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { NotificationStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '@common/prisma/prisma.service';
+import { normalizePagination } from '@common/utils/pagination';
 import { NotificationListQueryDto } from './dto/notification-list.dto';
 
 @Injectable()
@@ -17,7 +18,7 @@ export class NotificationsService {
     skip = 0,
     take = 10,
   ) {
-    const normalizedTake = Math.min(Math.max(take, 1), 100);
+    const pagination = normalizePagination({ skip, take });
     const where: Prisma.NotificationWhereInput = {
       project: {
         userId,
@@ -29,8 +30,8 @@ export class NotificationsService {
     const [notifications, total] = await Promise.all([
       this.prisma.notification.findMany({
         where,
-        skip,
-        take: normalizedTake,
+        skip: pagination.skip,
+        take: pagination.take,
         orderBy: { createdAt: 'desc' },
         include: {
           channel: {
@@ -55,8 +56,8 @@ export class NotificationsService {
     return {
       data: notifications,
       total,
-      skip,
-      take: normalizedTake,
+      skip: pagination.skip,
+      take: pagination.take,
     };
   }
 

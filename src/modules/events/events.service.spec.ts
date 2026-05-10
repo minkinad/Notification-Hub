@@ -3,11 +3,14 @@ import { EventsService } from './events.service';
 
 describe('EventsService', () => {
   const prisma = {
+    $transaction: jest.fn(),
     notificationChannel: {
       findMany: jest.fn(),
     },
     event: {
       create: jest.fn(),
+      count: jest.fn(),
+      findMany: jest.fn(),
     },
     notification: {
       createMany: jest.fn(),
@@ -23,6 +26,14 @@ describe('EventsService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    const transactionClient = {
+      event: prisma.event,
+      notification: prisma.notification,
+    };
+    prisma.$transaction.mockImplementation(
+      (callback: (client: typeof transactionClient) => unknown) =>
+        Promise.resolve(callback(transactionClient)),
+    );
     service = new EventsService(prisma, projectsService);
   });
 
@@ -89,6 +100,7 @@ describe('EventsService', () => {
         },
       ],
     });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     expect(result.notificationsCreated).toBe(2);
   });
 
@@ -112,5 +124,26 @@ describe('EventsService', () => {
 
     expect(prisma.notification.createMany).not.toHaveBeenCalled();
     expect(result.notificationsCreated).toBe(0);
+  });
+
+  it('normalizes negative pagination input', async () => {
+    prisma.event.findMany.mockResolvedValue([]);
+    prisma.event.count.mockResolvedValue(0);
+
+    const result = await service.findAll(
+      'user-1',
+      {},
+      -5,
+      1000,
+    );
+
+    expect(prisma.event.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 0,
+        take: 100,
+      }),
+    );
+    expect(result.skip).toBe(0);
+    expect(result.take).toBe(100);
   });
 });

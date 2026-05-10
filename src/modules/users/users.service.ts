@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@common/prisma/prisma.service';
+import { normalizePagination } from '@common/utils/pagination';
 import { UpdateUserDto } from './dto/update-user.dto';
 
 @Injectable()
@@ -51,11 +52,11 @@ export class UsersService {
   }
 
   async getAllUsers(skip = 0, take = 10) {
-    const normalizedTake = Math.min(Math.max(take, 1), 100);
+    const pagination = normalizePagination({ skip, take });
     const [users, total] = await Promise.all([
       this.prisma.user.findMany({
-        skip,
-        take: normalizedTake,
+        skip: pagination.skip,
+        take: pagination.take,
         select: {
           id: true,
           email: true,
@@ -73,8 +74,8 @@ export class UsersService {
     return {
       data: users,
       total,
-      skip,
-      take: normalizedTake,
+      skip: pagination.skip,
+      take: pagination.take,
     };
   }
 }

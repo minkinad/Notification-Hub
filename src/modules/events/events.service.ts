@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { ChannelType, EventStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '@common/prisma/prisma.service';
+import { normalizePagination } from '@common/utils/pagination';
 import { ProjectsService } from '@modules/projects/projects.service';
 import { CreateEventDto, EventListQueryDto } from './dto/create-event.dto';
 import { IngestEventDto } from './dto/ingest-event.dto';
@@ -39,7 +40,7 @@ export class EventsService {
   }
 
   async findAll(userId: string, query: EventListQueryDto, skip = 0, take = 10) {
-    const normalizedTake = Math.min(Math.max(take, 1), 100);
+    const pagination = normalizePagination({ skip, take });
     const where: Prisma.EventWhereInput = {
       project: {
         userId,
@@ -51,8 +52,8 @@ export class EventsService {
     const [events, total] = await Promise.all([
       this.prisma.event.findMany({
         where,
-        skip,
-        take: normalizedTake,
+        skip: pagination.skip,
+        take: pagination.take,
         orderBy: { createdAt: 'desc' },
         include: {
           notifications: {
@@ -72,8 +73,8 @@ export class EventsService {
     return {
       data: events,
       total,
-      skip,
-      take: normalizedTake,
+      skip: pagination.skip,
+      take: pagination.take,
     };
   }
 
@@ -121,29 +122,33 @@ export class EventsService {
       },
     });
 
-    const event = await this.prisma.event.create({
-      data: {
-        projectId,
-        type: payload.type,
-        data: payload.data as Prisma.InputJsonValue,
-        status:
-          channels.length > 0 ? EventStatus.PROCESSING : EventStatus.PENDING,
-      },
-    });
-
-    if (channels.length > 0) {
-      await this.prisma.notification.createMany({
-        data: channels.map((channel) => ({
+    const event = await this.prisma.$transaction(async (tx) => {
+      const createdEvent = await tx.event.create({
+        data: {
           projectId,
-          eventId: event.id,
-          channelId: channel.id,
-          recipient: this.resolveRecipient(channel.type, channel.config),
-          subject: this.resolveSubject(channel.type, payload.type),
-          template: payload.type,
-          templateData: payload.data as Prisma.InputJsonValue,
-        })),
+          type: payload.type,
+          data: payload.data as Prisma.InputJsonValue,
+          status:
+            channels.length > 0 ? EventStatus.PROCESSING : EventStatus.PENDING,
+        },
       });
-    }
+
+      if (channels.length > 0) {
+        await tx.notification.createMany({
+          data: channels.map((channel) => ({
+            projectId,
+            eventId: createdEvent.id,
+            channelId: channel.id,
+            recipient: this.resolveRecipient(channel.type, channel.config),
+            subject: this.resolveSubject(channel.type, payload.type),
+            template: payload.type,
+            templateData: payload.data as Prisma.InputJsonValue,
+          })),
+        });
+      }
+
+      return createdEvent;
+    });
 
     return {
       ...event,

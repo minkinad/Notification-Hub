@@ -5,6 +5,8 @@ describe('ProjectsService', () => {
   const prisma = {
     project: {
       create: jest.fn(),
+      count: jest.fn(),
+      findMany: jest.fn(),
       findUnique: jest.fn(),
       findFirst: jest.fn(),
     },
@@ -107,5 +109,21 @@ describe('ProjectsService', () => {
     await expect(
       service.ensureOwnedProject('project-1', 'user-1'),
     ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('normalizes pagination values for project listing', async () => {
+    prisma.project.findMany.mockResolvedValue([]);
+    prisma.project.count.mockResolvedValue(0);
+
+    const result = await service.findAll('user-1', -10, 1000);
+
+    expect(prisma.project.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 0,
+        take: 100,
+      }),
+    );
+    expect(result.skip).toBe(0);
+    expect(result.take).toBe(100);
   });
 });

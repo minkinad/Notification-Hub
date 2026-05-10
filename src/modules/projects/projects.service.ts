@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@common/prisma/prisma.service';
+import { normalizePagination } from '@common/utils/pagination';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { Project } from '@prisma/client';
@@ -34,12 +35,12 @@ export class ProjectsService {
   }
 
   async findAll(userId: string, skip = 0, take = 10) {
-    const normalizedTake = Math.min(Math.max(take, 1), 100);
+    const pagination = normalizePagination({ skip, take });
     const [projects, total] = await Promise.all([
       this.prisma.project.findMany({
         where: { userId },
-        skip,
-        take: normalizedTake,
+        skip: pagination.skip,
+        take: pagination.take,
         select: {
           id: true,
           name: true,
@@ -58,8 +59,8 @@ export class ProjectsService {
     return {
       data: projects,
       total,
-      skip,
-      take: normalizedTake,
+      skip: pagination.skip,
+      take: pagination.take,
     };
   }
 
