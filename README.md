@@ -15,18 +15,21 @@ It is designed as the core of a centralized notification platform for SaaS produ
 - JWT authentication with registration and login
 - User profile management
 - Admin-only user listing
-- Project isolation with per-project API keys
-- First-class project API key management with named keys, scopes, expiration, revocation, and last-used tracking
+- Project isolation with hashed per-project API keys
+- First-class project API key management with one-time key reveal, named keys, scopes, expiration, revocation, and last-used tracking
 - Configurable per-project `rateLimit` and `rateLimitWindow`
 - Redis-backed ingest rate limiting per managed API key or legacy project key
 - Channel management for `EMAIL`, `TELEGRAM`, `WEBHOOK`, and `SMS`
 - Event ingestion through authenticated API calls or `x-api-key`
-- Automatic notification creation and BullMQ delivery scheduling for active project channels
+- Automatic notification creation, outbox-backed BullMQ delivery scheduling, and queue recovery
 - Notification inspection, retry scheduling, delivery logs, and status transitions
 - Audit logging for project, API key, channel, event, and notification retry writes
-- Prisma-based PostgreSQL persistence
+- Prisma migrations and PostgreSQL persistence
+- HTTP delivery protections for timeout, response-size limits, redirects, and local/private network targets
 - Redis and BullMQ bootstrap modules for async expansion
 - Request validation, structured error responses, and Swagger docs
+- Docker and Docker Compose setup for local and production-style runs
+- Liveness/readiness endpoints for container orchestration
 - Linting and unit test coverage for critical service flows
 
 ## Architecture
@@ -48,8 +51,10 @@ High-level flow:
 2. The client sends an event through the authenticated API or project API key.
 3. The event is stored in PostgreSQL.
 4. The system creates notification records for all active channels on the project.
-5. Delivery workers process queued notifications, write delivery logs, and update event status.
-6. Operators inspect notifications and trigger retries when needed.
+5. A delivery outbox records notifications that must be queued, then BullMQ jobs are scheduled.
+6. Delivery workers process queued notifications, write delivery logs, and update event status.
+7. If queue scheduling fails, the outbox reconciler retries enqueueing in the background.
+8. Operators inspect notifications and trigger retries when needed.
 
 ## Tech Stack
 
@@ -60,6 +65,7 @@ High-level flow:
 - PostgreSQL
 - Redis
 - BullMQ
+- Docker / Docker Compose
 - Swagger / OpenAPI
 - Jest
 - ESLint
@@ -72,12 +78,16 @@ Implemented:
 
 - Authentication and authorization
 - Core CRUD APIs for users, projects, channels, events, notifications
-- Managed project API key lifecycle
+- Hashed legacy and managed project API key lifecycle
 - Redis-backed ingest rate limiting
-- Event-to-notification fan-out and BullMQ delivery queueing
+- Event-to-notification fan-out and outbox-backed BullMQ delivery queueing
 - Delivery state machine with retry/backoff and delivery logs
+- HTTP delivery guardrails for webhook/HTTP providers
 - Audit logs for write operations
+- Prisma migration history
 - Health endpoint
+- Dockerfile, Docker Compose, and deployment guide
+- Integration guide for external application developers
 - Validation, docs, tests, and local developer tooling
 
 Not included yet:
@@ -86,41 +96,70 @@ Not included yet:
 - Delivery receipts and callbacks from external providers
 - Dead-letter queue processing
 - Metrics, tracing, and dashboards
-- Full e2e test environment with real infrastructure containers
 
 ## Quick Start
 
-### 1. Install dependencies
+### Option A: Full stack with Docker
+
+```bash
+npm run docker:up
+```
+
+This starts PostgreSQL, Redis, runs Prisma migrations, and starts the API.
+
+Application URLs:
+
+- API: `http://localhost:3000`
+- Swagger: `http://localhost:3000/docs`
+- Health: `http://localhost:3000/api/v1/health`
+- Liveness: `http://localhost:3000/api/v1/health/live`
+- Readiness: `http://localhost:3000/api/v1/health/ready`
+
+Stop the stack with:
+
+```bash
+npm run docker:down
+```
+
+### Option B: Local Node.js
+
+Start local infrastructure:
+
+```bash
+npm run dev:infra
+```
+
+Install dependencies:
 
 ```bash
 npm install
 ```
 
-### 2. Create environment file
+Create environment file:
 
 ```bash
 cp .env.example .env
 ```
 
-### 3. Generate Prisma client
+Generate Prisma client:
 
 ```bash
 npm run prisma:generate
 ```
 
-### 4. Apply database migrations
+Apply database migrations:
 
 ```bash
 npm run prisma:migrate
 ```
 
-### 5. Seed local data
+Seed local data:
 
 ```bash
 npm run seed
 ```
 
-### 6. Start the application
+Start the application:
 
 ```bash
 npm run start:dev
@@ -131,6 +170,13 @@ Application URLs:
 - API: `http://localhost:3000`
 - Swagger: `http://localhost:3000/docs`
 - Health: `http://localhost:3000/api/v1/health`
+
+## Documentation
+
+- [Integration guide](docs/INTEGRATION.md): authentication modes, event ingest, delivery semantics, status model
+- [Deployment guide](docs/DEPLOYMENT.md): runtime config, migrations, Docker, probes, scaling notes
+- [Contributing guide](CONTRIBUTING.md): local setup, quality gate, pull request expectations
+- [Security policy](SECURITY.md): vulnerability reporting and operational security baseline
 
 ## Environment Variables
 
@@ -147,6 +193,10 @@ Recommended:
 - `CORS_ORIGIN`
 - `RATE_LIMIT_WINDOW_MS`
 - `RATE_LIMIT_MAX_REQUESTS`
+- `DELIVERY_HTTP_TIMEOUT_MS`
+- `DELIVERY_HTTP_MAX_RESPONSE_BYTES`
+- `DELIVERY_HTTP_BLOCK_PRIVATE_NETWORKS`
+- `DELIVERY_OUTBOX_INTERVAL_MS`
 
 ## Seed Credentials
 
@@ -209,6 +259,8 @@ Notifications:
 System:
 
 - `GET /health`
+- `GET /health/live`
+- `GET /health/ready`
 
 ## Example Workflow
 
@@ -267,7 +319,9 @@ Delivery behavior:
 - `WEBHOOK` sends an HTTP `POST` to `config.url`.
 - `TELEGRAM` sends via the Telegram Bot API when `botToken` is configured and not a test token.
 - `EMAIL` and `SMS` can be delivered through an HTTP provider by setting `config.provider` to `http` and `config.deliveryUrl`; otherwise they use mock delivery and still produce delivery logs.
+- HTTP delivery blocks redirects, blocks localhost/private-network targets by default, applies a timeout, and caps provider response reads.
 - Failed deliveries are retried with exponential backoff until `maxRetries` is reached.
+- Queue scheduling is backed by `delivery_outbox`, so notifications created while BullMQ is unavailable can be enqueued by the reconciler later.
 
 ### Create a managed API key
 
@@ -282,6 +336,8 @@ curl -X POST http://localhost:3000/api/v1/projects/<PROJECT_ID>/api-keys \
     "rateLimitWindow": 3600
   }'
 ```
+
+The `key` value is returned only in this create response. Subsequent project and API-key reads expose `apiKeyPrefix` or `keyPrefix`, while the database stores only SHA-256 hashes.
 
 ### Ingest an event with project API key
 
@@ -303,12 +359,17 @@ curl -X POST http://localhost:3000/api/v1/events/ingest \
 Useful commands:
 
 ```bash
+npm run dev:infra
+npm run dev:infra:down
 npm run start:dev
 npm run build
 npm run lint
 npm test
 npm run prisma:validate
+npm run prisma:migrate
+npm run prisma:deploy
 npm run prisma:studio
+npm run ci:verify
 ```
 
 ## Testing
@@ -335,7 +396,27 @@ npm test
 - Responses are wrapped by a response interceptor for consistent API shape.
 - Errors are normalized by a global exception filter.
 - Redis backs project ingest rate limits and BullMQ delivery scheduling.
+- `GET /api/v1/health/live` checks process liveness only.
+- `GET /api/v1/health/ready` checks PostgreSQL and Redis and returns `503` when dependencies are unavailable.
 - Delivery workers process webhook and Telegram deliveries directly. Email and SMS use HTTP-provider delivery when configured, otherwise mock delivery is recorded for local workflows.
+- Project and managed API keys are stored as SHA-256 hashes with non-secret prefixes for lookup/debugging. Full secrets are only returned when created or regenerated.
+- Channel config responses and audit changes redact sensitive fields such as tokens, secrets, passwords, authorization headers, and API keys.
+
+## Deployment
+
+Run database migrations before starting new application instances:
+
+```bash
+npm run prisma:deploy
+```
+
+Build the production image:
+
+```bash
+docker build -t notification-hub .
+```
+
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for environment variables, probes, and scaling notes.
 
 ## Roadmap
 
@@ -346,7 +427,7 @@ npm test
 
 ## Contributing
 
-Contributions are welcome. For non-trivial changes, open an issue first to discuss the intended design or behavior before submitting a pull request.
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. For non-trivial changes, open an issue first to discuss the intended design or behavior.
 
 ## License
 
