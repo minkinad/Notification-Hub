@@ -39,6 +39,14 @@ describe('HealthService', () => {
     expect(result.dependencies.redis.status).toBe('up');
   });
 
+  it('reports live status without checking dependencies', () => {
+    const result = service.getLiveStatus();
+
+    expect(result.status).toBe('ok');
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
+    expect(redis.ping).not.toHaveBeenCalled();
+  });
+
   it('reports degraded when a dependency fails', async () => {
     prisma.$queryRaw.mockRejectedValue(new Error('database unavailable'));
     redis.ping.mockResolvedValue('PONG');

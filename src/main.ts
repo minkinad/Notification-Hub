@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { NextFunction, Request, Response } from 'express';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from '@common/filters/all-exceptions.filter';
 import { ResponseInterceptor } from '@common/interceptors/response.interceptor';
@@ -8,6 +9,18 @@ import { ResponseInterceptor } from '@common/interceptors/response.interceptor';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     logger: ['log', 'error', 'warn', 'debug'],
+  });
+
+  app.enableShutdownHooks();
+  app.use((_: Request, response: Response, next: NextFunction) => {
+    response.setHeader('x-content-type-options', 'nosniff');
+    response.setHeader('x-frame-options', 'DENY');
+    response.setHeader('referrer-policy', 'no-referrer');
+    response.setHeader(
+      'permissions-policy',
+      'camera=(), microphone=(), geolocation=()',
+    );
+    next();
   });
 
   app.enableVersioning({

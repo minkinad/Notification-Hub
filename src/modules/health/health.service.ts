@@ -12,6 +12,10 @@ export class HealthService {
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
   ) {}
 
+  getLiveStatus() {
+    return this.getBaseStatus('ok');
+  }
+
   async getStatus() {
     const [database, redis] = await Promise.all([
       this.checkDatabase(),
@@ -20,16 +24,26 @@ export class HealthService {
     const isHealthy = database.status === 'up' && redis.status === 'up';
 
     return {
-      status: isHealthy ? 'ok' : 'degraded',
+      ...this.getBaseStatus(isHealthy ? 'ok' : 'degraded'),
+      dependencies: {
+        database,
+        redis,
+      },
+    };
+  }
+
+  async getReadyStatus() {
+    return this.getStatus();
+  }
+
+  private getBaseStatus(status: 'ok' | 'degraded') {
+    return {
+      status,
       service: this.configService.get<string>('APP_NAME', 'NotificationHub'),
       version: this.configService.get<string>('APP_VERSION', '1.0.0'),
       environment: this.configService.get<string>('NODE_ENV', 'development'),
       timestamp: new Date().toISOString(),
       uptimeSeconds: Math.round(process.uptime()),
-      dependencies: {
-        database,
-        redis,
-      },
     };
   }
 

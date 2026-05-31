@@ -21,9 +21,14 @@
     "test:e2e": "jest --config ./test/jest-e2e.json --passWithNoTests",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
-    "prisma:validate": "DATABASE_URL=${DATABASE_URL:-postgresql://user:password@localhost:5432/notification_hub} prisma validate",
+    "prisma:validate": "DATABASE_URL=${DATABASE_URL:-postgresql://notification_hub:notification_hub@localhost:5432/notification_hub} prisma validate",
     "seed": "ts-node prisma/seed.ts",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down",
+    "dev:infra": "docker compose -f docker-compose.dev.yml up -d",
+    "dev:infra:down": "docker compose -f docker-compose.dev.yml down",
     "ci:verify": "npm run prisma:validate && npm run prisma:generate && npm run format:check && npm run lint && npm test && npm run build"
   },
   "dependencies": {
