@@ -3,8 +3,10 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { ChannelType, Prisma } from '@prisma/client';
+import { AuditService } from '@common/audit/audit.service';
 import { isPrismaUniqueConstraintError } from '@common/prisma/prisma-errors';
 import { PrismaService } from '@common/prisma/prisma.service';
 import { ProjectsService } from '@modules/projects/projects.service';
@@ -16,6 +18,7 @@ export class ChannelsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly projectsService: ProjectsService,
+    @Optional() private readonly auditService?: AuditService,
   ) {}
 
   async create(userId: string, createChannelDto: CreateChannelDto) {
@@ -30,13 +33,26 @@ export class ChannelsService {
     );
 
     try {
-      return await this.prisma.notificationChannel.create({
+      const channel = await this.prisma.notificationChannel.create({
         data: {
           ...createChannelDto,
           config: createChannelDto.config as Prisma.InputJsonValue,
         },
         select: this.channelSelect,
       });
+      await this.auditService?.log({
+        userId,
+        projectId: channel.projectId,
+        action: 'channel.create',
+        resource: 'notification_channel',
+        details: {
+          channelId: channel.id,
+          type: channel.type,
+          name: channel.name,
+        },
+      });
+
+      return channel;
     } catch (error) {
       this.rethrowUniqueChannelConstraint(error, createChannelDto.type);
       throw error;
@@ -115,11 +131,23 @@ export class ChannelsService {
     }
 
     try {
-      return await this.prisma.notificationChannel.update({
+      const channel = await this.prisma.notificationChannel.update({
         where: { id },
         data,
         select: this.channelSelect,
       });
+      await this.auditService?.log({
+        userId,
+        projectId: channel.projectId,
+        action: 'channel.update',
+        resource: 'notification_channel',
+        changes: {
+          before: existingChannel,
+          after: channel,
+        },
+      });
+
+      return channel;
     } catch (error) {
       this.rethrowUniqueChannelConstraint(
         error,
@@ -130,7 +158,19 @@ export class ChannelsService {
   }
 
   async delete(id: string, userId: string) {
-    await this.findOne(id, userId);
+    const channel = await this.findOne(id, userId);
+
+    await this.auditService?.log({
+      userId,
+      projectId: channel.projectId,
+      action: 'channel.delete',
+      resource: 'notification_channel',
+      details: {
+        channelId: channel.id,
+        type: channel.type,
+        name: channel.name,
+      },
+    });
 
     await this.prisma.notificationChannel.delete({
       where: { id },
