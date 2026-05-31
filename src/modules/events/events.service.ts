@@ -2,10 +2,15 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  Optional,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ChannelType, EventStatus, Prisma } from '@prisma/client';
+import { AuditService } from '@common/audit/audit.service';
 import { PrismaService } from '@common/prisma/prisma.service';
+import { ProjectRateLimitService } from '@common/rate-limit/project-rate-limit.service';
 import { normalizePagination } from '@common/utils/pagination';
+import { NotificationDeliveryQueueService } from '@modules/notifications/delivery/notification-delivery-queue.service';
 import { ProjectsService } from '@modules/projects/projects.service';
 import { CreateEventDto, EventListQueryDto } from './dto/create-event.dto';
 import { IngestEventDto } from './dto/ingest-event.dto';
@@ -15,6 +20,11 @@ export class EventsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly projectsService: ProjectsService,
+    @Optional()
+    private readonly rateLimitService?: ProjectRateLimitService,
+    @Optional()
+    private readonly queueService?: NotificationDeliveryQueueService,
+    @Optional() private readonly auditService?: AuditService,
   ) {}
 
   async create(userId: string, createEventDto: CreateEventDto) {
@@ -23,20 +33,63 @@ export class EventsService {
       userId,
     );
 
-    return this.createEventRecord(createEventDto.projectId, {
+    const event = await this.createEventRecord(createEventDto.projectId, {
       type: createEventDto.type,
       data: createEventDto.data,
     });
+
+    await this.auditService?.log({
+      userId,
+      projectId: createEventDto.projectId,
+      action: 'event.create',
+      resource: 'event',
+      details: {
+        eventId: event.id,
+        type: event.type,
+        notificationsCreated: event.notificationsCreated,
+      },
+    });
+
+    return event;
   }
 
   async ingest(apiKey: string, ingestEventDto: IngestEventDto) {
-    const project = await this.projectsService.verifyApiKey(apiKey);
+    const verification = await this.projectsService.verifyApiKey(apiKey);
 
-    if (!project) {
+    if (!verification) {
       throw new BadRequestException('Invalid or inactive project API key');
     }
 
-    return this.createEventRecord(project.id, ingestEventDto);
+    const { project, apiKey: managedApiKey } = verification;
+    const scopes = this.asStringArray(managedApiKey?.scopes);
+
+    if (managedApiKey && !scopes.includes('events:ingest')) {
+      throw new BadRequestException('API key is not allowed to ingest events');
+    }
+
+    await this.rateLimitService?.consume({
+      projectId: project.id,
+      apiKeyId: managedApiKey?.id,
+      limit: managedApiKey?.rateLimit ?? project.rateLimit,
+      windowSeconds: managedApiKey?.rateLimitWindow ?? project.rateLimitWindow,
+    });
+
+    const event = await this.createEventRecord(project.id, ingestEventDto);
+
+    await this.auditService?.log({
+      userId: project.userId,
+      projectId: project.id,
+      action: managedApiKey ? 'event.ingest' : 'event.ingest_legacy_api_key',
+      resource: 'event',
+      details: {
+        eventId: event.id,
+        type: event.type,
+        apiKeyId: managedApiKey?.id ?? null,
+        notificationsCreated: event.notificationsCreated,
+      },
+    });
+
+    return event;
   }
 
   async findAll(userId: string, query: EventListQueryDto, skip = 0, take = 10) {
@@ -133,29 +186,61 @@ export class EventsService {
         },
       });
 
+      const notificationIds: string[] = [];
       if (channels.length > 0) {
-        await tx.notification.createMany({
-          data: channels.map((channel) => ({
-            projectId,
-            eventId: createdEvent.id,
-            channelId: channel.id,
-            recipient: this.resolveRecipient(channel.type, channel.config),
-            subject: this.resolveSubject(channel.type, payload.type),
-            template: payload.type,
-            templateData: payload.data as Prisma.InputJsonValue,
-          })),
-        });
+        const notifications = await Promise.all(
+          channels.map((channel) =>
+            tx.notification.create({
+              data: {
+                projectId,
+                eventId: createdEvent.id,
+                channelId: channel.id,
+                recipient: this.resolveRecipient(channel.type, channel.config),
+                subject: this.resolveSubject(channel.type, payload.type),
+                template: payload.type,
+                templateData: payload.data as Prisma.InputJsonValue,
+              },
+              select: {
+                id: true,
+              },
+            }),
+          ),
+        );
+        notificationIds.push(
+          ...notifications.map((notification) => notification.id),
+        );
       }
 
       return {
         event: createdEvent,
         notificationsCreated: channels.length,
+        notificationIds,
       };
     });
+
+    if (result.notificationIds.length > 0) {
+      try {
+        await this.queueService?.enqueueMany(result.notificationIds);
+      } catch (error) {
+        await this.prisma.event.update({
+          where: {
+            id: result.event.id,
+          },
+          data: {
+            status: EventStatus.PENDING,
+          },
+        });
+        const message = error instanceof Error ? error.message : String(error);
+        throw new ServiceUnavailableException(
+          `Notification delivery queue is unavailable: ${message}`,
+        );
+      }
+    }
 
     return {
       ...result.event,
       notificationsCreated: result.notificationsCreated,
+      notificationsQueued: result.notificationIds.length,
     };
   }
 
@@ -201,5 +286,16 @@ export class EventsService {
     }
 
     return value as Record<string, unknown>;
+  }
+
+  private asStringArray(value: Prisma.JsonValue | undefined) {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return value.filter(
+      (item): item is string =>
+        typeof item === 'string' && item.trim().length > 0,
+    );
   }
 }
