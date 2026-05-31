@@ -7,6 +7,12 @@ import {
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '@common/prisma/prisma.service';
+import {
+  asJsonRecord,
+  readNonEmptyString,
+  readNumberField,
+  readStringRecord,
+} from '@common/utils/json';
 import { NotificationDeliveryQueueService } from './notification-delivery-queue.service';
 
 type NotificationForDelivery = Prisma.NotificationGetPayload<{
@@ -140,7 +146,7 @@ export class NotificationDeliveryService {
   }
 
   private async deliverToChannel(notification: NotificationForDelivery) {
-    const config = this.asRecord(notification.channel.config);
+    const config = asJsonRecord(notification.channel.config);
 
     if (notification.channel.type === ChannelType.WEBHOOK) {
       return this.deliverWebhook(notification, config);
@@ -155,7 +161,7 @@ export class NotificationDeliveryService {
         notification.channel.type === ChannelType.SMS) &&
       config.provider === 'http'
     ) {
-      const deliveryUrl = this.readString(config.deliveryUrl ?? config.url);
+      const deliveryUrl = readNonEmptyString(config.deliveryUrl ?? config.url);
       if (deliveryUrl) {
         return this.postJson(deliveryUrl, this.buildPayload(notification), {});
       }
@@ -172,12 +178,12 @@ export class NotificationDeliveryService {
     notification: NotificationForDelivery,
     config: Record<string, unknown>,
   ) {
-    const url = this.readString(config.url);
+    const url = readNonEmptyString(config.url);
     if (!url) {
       throw new Error('Webhook URL is not configured');
     }
 
-    const headers = this.asStringRecord(config.headers);
+    const headers = readStringRecord(config.headers);
     return this.postJson(url, this.buildPayload(notification), headers);
   }
 
@@ -185,8 +191,8 @@ export class NotificationDeliveryService {
     notification: NotificationForDelivery,
     config: Record<string, unknown>,
   ) {
-    const botToken = this.readString(config.botToken);
-    const chatId = this.readString(config.chatId ?? config.username);
+    const botToken = readNonEmptyString(config.botToken);
+    const chatId = readNonEmptyString(config.chatId ?? config.username);
 
     if (!botToken || !chatId || botToken.startsWith('test-')) {
       return {
@@ -298,37 +304,6 @@ export class NotificationDeliveryService {
   }
 
   private getStatusCode(value: Prisma.InputJsonValue) {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-      return undefined;
-    }
-
-    const statusCode = (value as Record<string, unknown>).statusCode;
-    return typeof statusCode === 'number' ? statusCode : undefined;
-  }
-
-  private asRecord(value: Prisma.JsonValue) {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-      return {};
-    }
-
-    return value as Record<string, unknown>;
-  }
-
-  private asStringRecord(value: unknown) {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-      return {};
-    }
-
-    return Object.fromEntries(
-      Object.entries(value).filter(
-        (entry): entry is [string, string] => typeof entry[1] === 'string',
-      ),
-    );
-  }
-
-  private readString(value: unknown) {
-    return typeof value === 'string' && value.trim().length > 0
-      ? value.trim()
-      : null;
+    return readNumberField(value, 'statusCode');
   }
 }

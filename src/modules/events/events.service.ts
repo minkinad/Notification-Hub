@@ -9,6 +9,11 @@ import { ChannelType, EventStatus, Prisma } from '@prisma/client';
 import { AuditService } from '@common/audit/audit.service';
 import { PrismaService } from '@common/prisma/prisma.service';
 import { ProjectRateLimitService } from '@common/rate-limit/project-rate-limit.service';
+import {
+  asJsonRecord,
+  readNonEmptyString,
+  readStringArray,
+} from '@common/utils/json';
 import { normalizePagination } from '@common/utils/pagination';
 import { NotificationDeliveryQueueService } from '@modules/notifications/delivery/notification-delivery-queue.service';
 import { ProjectsService } from '@modules/projects/projects.service';
@@ -61,7 +66,7 @@ export class EventsService {
     }
 
     const { project, apiKey: managedApiKey } = verification;
-    const scopes = this.asStringArray(managedApiKey?.scopes);
+    const scopes = readStringArray(managedApiKey?.scopes);
 
     if (managedApiKey && !scopes.includes('events:ingest')) {
       throw new BadRequestException('API key is not allowed to ingest events');
@@ -248,25 +253,29 @@ export class EventsService {
     channelType: ChannelType,
     config: Prisma.JsonValue,
   ): string {
-    const typedConfig = this.asRecord(config);
+    const typedConfig = asJsonRecord(config);
 
     if (channelType === ChannelType.EMAIL) {
-      return String(
-        typedConfig.to ?? typedConfig.email ?? 'unconfigured-email',
+      return (
+        readNonEmptyString(typedConfig.to) ??
+        readNonEmptyString(typedConfig.email) ??
+        'unconfigured-email'
       );
     }
 
     if (channelType === ChannelType.TELEGRAM) {
-      return String(
-        typedConfig.chatId ?? typedConfig.username ?? 'unconfigured-chat',
+      return (
+        readNonEmptyString(typedConfig.chatId) ??
+        readNonEmptyString(typedConfig.username) ??
+        'unconfigured-chat'
       );
     }
 
     if (channelType === ChannelType.WEBHOOK) {
-      return String(typedConfig.url ?? 'unconfigured-webhook');
+      return readNonEmptyString(typedConfig.url) ?? 'unconfigured-webhook';
     }
 
-    return String(typedConfig.phone ?? 'unconfigured-recipient');
+    return readNonEmptyString(typedConfig.phone) ?? 'unconfigured-recipient';
   }
 
   private resolveSubject(
@@ -278,24 +287,5 @@ export class EventsService {
     }
 
     return `Notification for ${eventType}`;
-  }
-
-  private asRecord(value: Prisma.JsonValue): Record<string, unknown> {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-      return {};
-    }
-
-    return value as Record<string, unknown>;
-  }
-
-  private asStringArray(value: Prisma.JsonValue | undefined) {
-    if (!Array.isArray(value)) {
-      return [];
-    }
-
-    return value.filter(
-      (item): item is string =>
-        typeof item === 'string' && item.trim().length > 0,
-    );
   }
 }

@@ -9,6 +9,7 @@ import { ChannelType, Prisma } from '@prisma/client';
 import { AuditService } from '@common/audit/audit.service';
 import { isPrismaUniqueConstraintError } from '@common/prisma/prisma-errors';
 import { PrismaService } from '@common/prisma/prisma.service';
+import { asJsonRecord, readNonEmptyString } from '@common/utils/json';
 import { ProjectsService } from '@modules/projects/projects.service';
 import { CreateChannelDto } from './dto/create-channel.dto';
 import { UpdateChannelDto } from './dto/update-channel.dto';
@@ -97,7 +98,7 @@ export class ChannelsService {
 
     if (shouldValidateConfig) {
       const nextType = updateChannelDto.type ?? existingChannel.type;
-      const nextConfig = this.asRecord(
+      const nextConfig = asJsonRecord(
         updateChannelDto.config ?? existingChannel.config,
       );
       this.assertChannelConfig(nextType, nextConfig);
@@ -268,20 +269,13 @@ export class ChannelsService {
   ) {
     for (const fieldName of fieldNames) {
       const value = config[fieldName];
-      if (typeof value === 'string' && value.trim().length > 0) {
-        return value.trim();
+      const stringValue = readNonEmptyString(value);
+      if (stringValue) {
+        return stringValue;
       }
     }
 
     throw new BadRequestException(errorMessage);
-  }
-
-  private asRecord(value: Prisma.JsonValue | Record<string, unknown>) {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-      return {};
-    }
-
-    return value as Record<string, unknown>;
   }
 
   private rethrowUniqueChannelConstraint(error: unknown, type: ChannelType) {
