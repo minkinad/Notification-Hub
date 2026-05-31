@@ -1,0 +1,334 @@
+import { Injectable, Logger } from '@nestjs/common';
+import {
+  ChannelType,
+  DeliveryStatus,
+  EventStatus,
+  NotificationStatus,
+  Prisma,
+} from '@prisma/client';
+import { PrismaService } from '@common/prisma/prisma.service';
+import { NotificationDeliveryQueueService } from './notification-delivery-queue.service';
+
+type NotificationForDelivery = Prisma.NotificationGetPayload<{
+  include: {
+    channel: true;
+    event: true;
+  };
+}>;
+
+@Injectable()
+export class NotificationDeliveryService {
+  private readonly logger = new Logger(NotificationDeliveryService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly queueService: NotificationDeliveryQueueService,
+  ) {}
+
+  async deliver(notificationId: string) {
+    const notification = await this.prisma.notification.findUnique({
+      where: { id: notificationId },
+      include: {
+        channel: true,
+        event: true,
+      },
+    });
+
+    if (!notification) {
+      this.logger.warn(`Notification ${notificationId} was not found`);
+      return { skipped: true, reason: 'not_found' };
+    }
+
+    if (
+      notification.status !== NotificationStatus.PENDING &&
+      notification.status !== NotificationStatus.RETRYING
+    ) {
+      return { skipped: true, reason: `status_${notification.status}` };
+    }
+
+    const claimed = await this.prisma.notification.updateMany({
+      where: {
+        id: notificationId,
+        status: {
+          in: [NotificationStatus.PENDING, NotificationStatus.RETRYING],
+        },
+      },
+      data: {
+        status: NotificationStatus.PROCESSING,
+        nextRetryAt: null,
+      },
+    });
+
+    if (claimed.count !== 1) {
+      return { skipped: true, reason: 'not_claimed' };
+    }
+
+    try {
+      const providerResponse = await this.deliverToChannel(notification);
+
+      await this.prisma.$transaction(async (tx) => {
+        await tx.notification.update({
+          where: { id: notification.id },
+          data: {
+            status: NotificationStatus.SENT,
+            sentAt: new Date(),
+            lastError: null,
+          },
+        });
+        await tx.deliveryLog.create({
+          data: {
+            notificationId: notification.id,
+            status: DeliveryStatus.SUCCESS,
+            statusCode: this.getStatusCode(providerResponse),
+            response: providerResponse,
+          },
+        });
+        await this.refreshEventStatus(tx, notification.eventId);
+      });
+
+      return { delivered: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const nextRetryCount = notification.retryCount + 1;
+      const shouldRetry = nextRetryCount <= notification.maxRetries;
+      const retryDelayMs = shouldRetry
+        ? this.calculateRetryDelayMs(nextRetryCount)
+        : 0;
+      const nextRetryAt = shouldRetry
+        ? new Date(Date.now() + retryDelayMs)
+        : null;
+
+      await this.prisma.$transaction(async (tx) => {
+        await tx.notification.update({
+          where: { id: notification.id },
+          data: {
+            status: shouldRetry
+              ? NotificationStatus.RETRYING
+              : NotificationStatus.FAILED,
+            retryCount: nextRetryCount,
+            nextRetryAt,
+            lastError: message,
+          },
+        });
+        await tx.deliveryLog.create({
+          data: {
+            notificationId: notification.id,
+            status: shouldRetry
+              ? DeliveryStatus.RETRYING
+              : DeliveryStatus.FAILED,
+            error: message,
+            response: {
+              channelType: notification.channel.type,
+              retryScheduled: shouldRetry,
+              nextRetryAt: nextRetryAt?.toISOString() ?? null,
+            },
+          },
+        });
+        await this.refreshEventStatus(tx, notification.eventId);
+      });
+
+      if (shouldRetry) {
+        await this.queueService.enqueue(notification.id, retryDelayMs);
+      }
+
+      return {
+        delivered: false,
+        retryScheduled: shouldRetry,
+        error: message,
+      };
+    }
+  }
+
+  private async deliverToChannel(notification: NotificationForDelivery) {
+    const config = this.asRecord(notification.channel.config);
+
+    if (notification.channel.type === ChannelType.WEBHOOK) {
+      return this.deliverWebhook(notification, config);
+    }
+
+    if (notification.channel.type === ChannelType.TELEGRAM) {
+      return this.deliverTelegram(notification, config);
+    }
+
+    if (
+      (notification.channel.type === ChannelType.EMAIL ||
+        notification.channel.type === ChannelType.SMS) &&
+      config.provider === 'http'
+    ) {
+      const deliveryUrl = this.readString(config.deliveryUrl ?? config.url);
+      if (deliveryUrl) {
+        return this.postJson(deliveryUrl, this.buildPayload(notification), {});
+      }
+    }
+
+    return {
+      mode: 'mock',
+      channelType: notification.channel.type,
+      recipient: notification.recipient,
+    } satisfies Prisma.InputJsonObject;
+  }
+
+  private async deliverWebhook(
+    notification: NotificationForDelivery,
+    config: Record<string, unknown>,
+  ) {
+    const url = this.readString(config.url);
+    if (!url) {
+      throw new Error('Webhook URL is not configured');
+    }
+
+    const headers = this.asStringRecord(config.headers);
+    return this.postJson(url, this.buildPayload(notification), headers);
+  }
+
+  private async deliverTelegram(
+    notification: NotificationForDelivery,
+    config: Record<string, unknown>,
+  ) {
+    const botToken = this.readString(config.botToken);
+    const chatId = this.readString(config.chatId ?? config.username);
+
+    if (!botToken || !chatId || botToken.startsWith('test-')) {
+      return {
+        mode: 'mock',
+        channelType: ChannelType.TELEGRAM,
+        recipient: notification.recipient,
+      } satisfies Prisma.InputJsonObject;
+    }
+
+    const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
+    return this.postJson(
+      url,
+      {
+        chat_id: chatId,
+        text: this.renderText(notification),
+      },
+      {},
+    );
+  }
+
+  private async postJson(
+    url: string,
+    body: unknown,
+    headers: Record<string, string>,
+  ) {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...headers,
+      },
+      body: JSON.stringify(body),
+    });
+    const responseText = await response.text();
+    const jsonResponse = {
+      statusCode: response.status,
+      body: responseText.slice(0, 2000),
+    } satisfies Prisma.InputJsonObject;
+
+    if (!response.ok) {
+      throw new Error(
+        `Delivery provider responded with ${response.status}: ${responseText.slice(
+          0,
+          500,
+        )}`,
+      );
+    }
+
+    return jsonResponse;
+  }
+
+  private buildPayload(notification: NotificationForDelivery) {
+    return {
+      notificationId: notification.id,
+      eventId: notification.eventId,
+      projectId: notification.projectId,
+      type: notification.template,
+      recipient: notification.recipient,
+      subject: notification.subject,
+      data: notification.templateData,
+      createdAt: notification.createdAt.toISOString(),
+    };
+  }
+
+  private renderText(notification: NotificationForDelivery) {
+    const subject = notification.subject ?? notification.template;
+    return `${subject}\n${JSON.stringify(notification.templateData)}`;
+  }
+
+  private calculateRetryDelayMs(retryCount: number) {
+    return Math.min(300_000, 60_000 * 2 ** Math.max(0, retryCount - 1));
+  }
+
+  private async refreshEventStatus(
+    tx: Prisma.TransactionClient,
+    eventId: string,
+  ) {
+    const [openCount, failedCount] = await Promise.all([
+      tx.notification.count({
+        where: {
+          eventId,
+          status: {
+            in: [
+              NotificationStatus.PENDING,
+              NotificationStatus.PROCESSING,
+              NotificationStatus.RETRYING,
+            ],
+          },
+        },
+      }),
+      tx.notification.count({
+        where: {
+          eventId,
+          status: NotificationStatus.FAILED,
+        },
+      }),
+    ]);
+
+    if (openCount > 0) {
+      return;
+    }
+
+    await tx.event.update({
+      where: { id: eventId },
+      data: {
+        status: failedCount > 0 ? EventStatus.FAILED : EventStatus.COMPLETED,
+      },
+    });
+  }
+
+  private getStatusCode(value: Prisma.InputJsonValue) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return undefined;
+    }
+
+    const statusCode = (value as Record<string, unknown>).statusCode;
+    return typeof statusCode === 'number' ? statusCode : undefined;
+  }
+
+  private asRecord(value: Prisma.JsonValue) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return {};
+    }
+
+    return value as Record<string, unknown>;
+  }
+
+  private asStringRecord(value: unknown) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return {};
+    }
+
+    return Object.fromEntries(
+      Object.entries(value).filter(
+        (entry): entry is [string, string] => typeof entry[1] === 'string',
+      ),
+    );
+  }
+
+  private readString(value: unknown) {
+    return typeof value === 'string' && value.trim().length > 0
+      ? value.trim()
+      : null;
+  }
+}

@@ -2,15 +2,23 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { NotificationStatus, Prisma } from '@prisma/client';
+import { AuditService } from '@common/audit/audit.service';
 import { PrismaService } from '@common/prisma/prisma.service';
 import { normalizePagination } from '@common/utils/pagination';
+import { NotificationDeliveryQueueService } from './delivery/notification-delivery-queue.service';
 import { NotificationListQueryDto } from './dto/notification-list.dto';
 
 @Injectable()
 export class NotificationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional()
+    private readonly queueService?: NotificationDeliveryQueueService,
+    @Optional() private readonly auditService?: AuditService,
+  ) {}
 
   async findAll(
     userId: string,
@@ -108,18 +116,25 @@ export class NotificationsService {
       );
     }
 
+    if (notification.status === NotificationStatus.PROCESSING) {
+      throw new BadRequestException(
+        'Processing notifications cannot be retried',
+      );
+    }
+
     if (notification.retryCount >= notification.maxRetries) {
       throw new BadRequestException('Maximum retry count has been reached');
     }
 
-    return this.prisma.notification.update({
+    const nextRetryAt = new Date(Date.now() + 60_000);
+    const updatedNotification = await this.prisma.notification.update({
       where: { id },
       data: {
         status: NotificationStatus.RETRYING,
         retryCount: {
           increment: 1,
         },
-        nextRetryAt: new Date(Date.now() + 60_000),
+        nextRetryAt,
         lastError: null,
       },
       include: {
@@ -139,5 +154,20 @@ export class NotificationsService {
         },
       },
     });
+
+    await this.queueService?.enqueue(id, 60_000);
+    await this.auditService?.log({
+      userId,
+      projectId: updatedNotification.projectId,
+      action: 'notification.retry',
+      resource: 'notification',
+      details: {
+        notificationId: id,
+        retryCount: updatedNotification.retryCount,
+        nextRetryAt: nextRetryAt.toISOString(),
+      },
+    });
+
+    return updatedNotification;
   }
 }

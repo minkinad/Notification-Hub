@@ -24,5 +24,6 @@ import { ConfigService } from '@nestjs/config';
       inject: [ConfigService],
     }),
   ],
+  exports: [BullModule],
 })
 export class QueueModule {}
