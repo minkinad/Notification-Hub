@@ -244,10 +244,7 @@ export class ChannelsService {
     return value as Record<string, unknown>;
   }
 
-  private rethrowUniqueChannelConstraint(
-    error: unknown,
-    type: ChannelType,
-  ) {
+  private rethrowUniqueChannelConstraint(error: unknown, type: ChannelType) {
     if (isPrismaUniqueConstraintError(error)) {
       throw new ConflictException(
         `Channel type ${type} already exists for this project`,

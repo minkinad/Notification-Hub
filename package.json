@@ -7,7 +7,8 @@
   "scripts": {
     "prebuild": "rimraf dist",
     "build": "nest build",
-    "format": "prettier --write --no-error-on-unmatched-pattern \"src/**/*.ts\" \"test/**/*.ts\" \"prisma/**/*.ts\"",
+    "format": "prettier --write --no-error-on-unmatched-pattern \"src/**/*.ts\" \"test/**/*.ts\" \"prisma/**/*.ts\" \".github/workflows/*.yml\"",
+    "format:check": "prettier --check --no-error-on-unmatched-pattern \"src/**/*.ts\" \"test/**/*.ts\" \"prisma/**/*.ts\" \".github/workflows/*.yml\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
@@ -23,7 +24,7 @@
     "prisma:studio": "prisma studio",
     "prisma:validate": "DATABASE_URL=${DATABASE_URL:-postgresql://user:password@localhost:5432/notification_hub} prisma validate",
     "seed": "ts-node prisma/seed.ts",
-    "ci:verify": "npm run prisma:validate && npm run prisma:generate && npm run lint && npm test && npm run build"
+    "ci:verify": "npm run prisma:validate && npm run prisma:generate && npm run format:check && npm run lint && npm test && npm run build"
   },
   "dependencies": {
     "@nestjs/bullmq": "^11.0.4",

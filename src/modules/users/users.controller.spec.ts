@@ -63,15 +63,12 @@ describe('UsersController', () => {
   });
 
   it('allows admins to list users', async () => {
-    await request(app.getHttpServer())
-      .get('/api/v1/users')
-      .expect(200)
-      .expect({
-        data: [],
-        total: 0,
-        skip: 0,
-        take: 10,
-      });
+    await request(app.getHttpServer()).get('/api/v1/users').expect(200).expect({
+      data: [],
+      total: 0,
+      skip: 0,
+      take: 10,
+    });
 
     expect(usersService.getAllUsers).toHaveBeenCalledWith(0, 10);
   });

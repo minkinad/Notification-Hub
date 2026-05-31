@@ -131,12 +131,7 @@ describe('EventsService', () => {
     prisma.event.findMany.mockResolvedValue([]);
     prisma.event.count.mockResolvedValue(0);
 
-    const result = await service.findAll(
-      'user-1',
-      {},
-      -5,
-      1000,
-    );
+    const result = await service.findAll('user-1', {}, -5, 1000);
 
     expect(prisma.event.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
