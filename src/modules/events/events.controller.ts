@@ -1,11 +1,9 @@
 import {
   Body,
   Controller,
-  DefaultValuePipe,
   Get,
   Headers,
   Param,
-  ParseIntPipe,
   Post,
   Query,
   UseGuards,
@@ -68,10 +66,13 @@ export class EventsController {
   async findAll(
     @CurrentUser() user: JwtUser,
     @Query() query: EventListQueryDto,
-    @Query('skip', new DefaultValuePipe(0), ParseIntPipe) skip: number,
-    @Query('take', new DefaultValuePipe(10), ParseIntPipe) take: number,
   ) {
-    return this.eventsService.findAll(user.id, query, skip, take);
+    return this.eventsService.findAll(
+      user.id,
+      query,
+      query.skip ?? 0,
+      query.take ?? 10,
+    );
   }
 
   @Get(':id')

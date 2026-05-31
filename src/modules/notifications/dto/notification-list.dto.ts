@@ -1,8 +1,9 @@
 import { NotificationStatus } from '@prisma/client';
 import { ApiProperty } from '@nestjs/swagger';
+import { PaginationQueryDto } from '@common/dto/pagination-query.dto';
 import { IsEnum, IsOptional, IsString } from 'class-validator';
 
-export class NotificationListQueryDto {
+export class NotificationListQueryDto extends PaginationQueryDto {
   @ApiProperty({
     description: 'Project identifier',
     required: false,

@@ -1,9 +1,7 @@
 import {
   Controller,
-  DefaultValuePipe,
   Get,
   Param,
-  ParseIntPipe,
   Post,
   Query,
   UseGuards,
@@ -35,10 +33,13 @@ export class NotificationsController {
   async findAll(
     @CurrentUser() user: JwtUser,
     @Query() query: NotificationListQueryDto,
-    @Query('skip', new DefaultValuePipe(0), ParseIntPipe) skip: number,
-    @Query('take', new DefaultValuePipe(10), ParseIntPipe) take: number,
   ) {
-    return this.notificationsService.findAll(user.id, query, skip, take);
+    return this.notificationsService.findAll(
+      user.id,
+      query,
+      query.skip ?? 0,
+      query.take ?? 10,
+    );
   }
 
   @Get(':id')

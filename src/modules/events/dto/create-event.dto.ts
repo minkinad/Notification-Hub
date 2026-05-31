@@ -1,5 +1,6 @@
 import { EventStatus } from '@prisma/client';
 import { ApiProperty } from '@nestjs/swagger';
+import { PaginationQueryDto } from '@common/dto/pagination-query.dto';
 import {
   IsEnum,
   IsNotEmpty,
@@ -37,7 +38,7 @@ export class CreateEventDto {
   data!: Record<string, unknown>;
 }
 
-export class EventListQueryDto {
+export class EventListQueryDto extends PaginationQueryDto {
   @ApiProperty({
     description: 'Project identifier',
     required: false,
