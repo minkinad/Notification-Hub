@@ -30,7 +30,7 @@ describe('ProjectsService', () => {
       id: 'project-1',
       name: 'Main Project',
       description: null,
-      apiKey: 'pk_123',
+      apiKeyPrefix: 'pk_legacy_12345',
       rateLimit: 1000,
       rateLimitWindow: 3600,
       active: true,
@@ -49,7 +49,7 @@ describe('ProjectsService', () => {
         id: true,
         name: true,
         description: true,
-        apiKey: true,
+        apiKeyPrefix: true,
         rateLimit: true,
         rateLimitWindow: true,
         active: true,
@@ -64,7 +64,7 @@ describe('ProjectsService', () => {
       id: 'project-1',
       name: 'Main Project',
       description: null,
-      apiKey: 'pk_123',
+      apiKeyPrefix: 'pk_legacy_12345',
       rateLimit: 1000,
       rateLimitWindow: 3600,
       active: true,
@@ -83,13 +83,14 @@ describe('ProjectsService', () => {
         rateLimit: 1000,
         rateLimitWindow: 3600,
         userId: 'user-1',
-        apiKey: expect.stringMatching(/^pk_/),
+        apiKeyHash: expect.any(String),
+        apiKeyPrefix: expect.stringMatching(/^pk_legacy_/),
       },
       select: {
         id: true,
         name: true,
         description: true,
-        apiKey: true,
+        apiKeyPrefix: true,
         rateLimit: true,
         rateLimitWindow: true,
         active: true,
@@ -145,7 +146,7 @@ describe('ProjectsService', () => {
     });
     prisma.apiKey.create.mockResolvedValue({
       id: 'api-key-1',
-      key: 'pk_created',
+      keyPrefix: 'pk_created',
       name: 'Production',
       scopes: ['events:ingest'],
       active: true,
@@ -163,7 +164,8 @@ describe('ProjectsService', () => {
 
     expect(prisma.apiKey.create).toHaveBeenCalledWith({
       data: {
-        key: expect.stringMatching(/^pk_/),
+        keyHash: expect.any(String),
+        keyPrefix: expect.stringMatching(/^pk_/),
         userId: 'user-1',
         projectId: 'project-1',
         name: 'Production',
@@ -173,8 +175,8 @@ describe('ProjectsService', () => {
         rateLimitWindow: undefined,
       },
       select: expect.objectContaining({
-        key: true,
         id: true,
+        keyPrefix: true,
       }),
     });
   });
@@ -207,6 +209,14 @@ describe('ProjectsService', () => {
       },
       data: {
         lastUsed: expect.any(Date),
+      },
+    });
+    expect(prisma.apiKey.findUnique).toHaveBeenCalledWith({
+      where: {
+        keyHash: expect.any(String),
+      },
+      include: {
+        project: true,
       },
     });
   });

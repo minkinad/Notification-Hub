@@ -4,6 +4,7 @@ import { AuditModule } from '@common/audit/audit.module';
 import { PrismaModule } from '@common/prisma/prisma.module';
 import { QueueModule } from '@common/queue/queue.module';
 import { NOTIFICATION_DELIVERY_QUEUE } from './delivery/notification-delivery.constants';
+import { NotificationDeliveryOutboxService } from './delivery/notification-delivery-outbox.service';
 import { NotificationDeliveryProcessor } from './delivery/notification-delivery.processor';
 import { NotificationDeliveryQueueService } from './delivery/notification-delivery-queue.service';
 import { NotificationDeliveryService } from './delivery/notification-delivery.service';
@@ -22,10 +23,15 @@ import { NotificationsService } from './notifications.service';
   controllers: [NotificationsController],
   providers: [
     NotificationsService,
+    NotificationDeliveryOutboxService,
     NotificationDeliveryProcessor,
     NotificationDeliveryQueueService,
     NotificationDeliveryService,
   ],
-  exports: [NotificationsService, NotificationDeliveryQueueService],
+  exports: [
+    NotificationsService,
+    NotificationDeliveryQueueService,
+    NotificationDeliveryOutboxService,
+  ],
 })
 export class NotificationsModule {}

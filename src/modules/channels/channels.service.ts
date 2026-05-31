@@ -10,6 +10,7 @@ import { AuditService } from '@common/audit/audit.service';
 import { isPrismaUniqueConstraintError } from '@common/prisma/prisma-errors';
 import { PrismaService } from '@common/prisma/prisma.service';
 import { asJsonRecord, readNonEmptyString } from '@common/utils/json';
+import { maskSensitiveJson } from '@common/utils/secrets';
 import { ProjectsService } from '@modules/projects/projects.service';
 import { CreateChannelDto } from './dto/create-channel.dto';
 import { UpdateChannelDto } from './dto/update-channel.dto';
@@ -53,7 +54,7 @@ export class ChannelsService {
         },
       });
 
-      return channel;
+      return this.maskChannel(channel);
     } catch (error) {
       this.rethrowUniqueChannelConstraint(error, createChannelDto.type);
       throw error;
@@ -63,33 +64,23 @@ export class ChannelsService {
   async findAll(userId: string, projectId: string) {
     await this.projectsService.ensureOwnedProject(projectId, userId);
 
-    return this.prisma.notificationChannel.findMany({
+    const channels = await this.prisma.notificationChannel.findMany({
       where: { projectId },
       select: this.channelSelect,
       orderBy: { createdAt: 'desc' },
     });
+
+    return channels.map((channel) => this.maskChannel(channel));
   }
 
   async findOne(id: string, userId: string) {
-    const channel = await this.prisma.notificationChannel.findFirst({
-      where: {
-        id,
-        project: {
-          userId,
-        },
-      },
-      select: this.channelSelect,
-    });
+    const channel = await this.findOwnedChannelRaw(id, userId);
 
-    if (!channel) {
-      throw new NotFoundException('Channel not found');
-    }
-
-    return channel;
+    return this.maskChannel(channel);
   }
 
   async update(id: string, userId: string, updateChannelDto: UpdateChannelDto) {
-    const existingChannel = await this.findOne(id, userId);
+    const existingChannel = await this.findOwnedChannelRaw(id, userId);
     const shouldValidateConfig =
       updateChannelDto.type !== undefined ||
       updateChannelDto.config !== undefined;
@@ -143,12 +134,12 @@ export class ChannelsService {
         action: 'channel.update',
         resource: 'notification_channel',
         changes: {
-          before: existingChannel,
-          after: channel,
+          before: this.maskChannel(existingChannel),
+          after: this.maskChannel(channel),
         },
       });
 
-      return channel;
+      return this.maskChannel(channel);
     } catch (error) {
       this.rethrowUniqueChannelConstraint(
         error,
@@ -192,6 +183,31 @@ export class ChannelsService {
     createdAt: true,
     updatedAt: true,
   } as const;
+
+  private async findOwnedChannelRaw(id: string, userId: string) {
+    const channel = await this.prisma.notificationChannel.findFirst({
+      where: {
+        id,
+        project: {
+          userId,
+        },
+      },
+      select: this.channelSelect,
+    });
+
+    if (!channel) {
+      throw new NotFoundException('Channel not found');
+    }
+
+    return channel;
+  }
+
+  private maskChannel<T extends { config: unknown }>(channel: T): T {
+    return {
+      ...channel,
+      config: maskSensitiveJson(channel.config),
+    };
+  }
 
   private async ensureChannelTypeAvailable(
     projectId: string,

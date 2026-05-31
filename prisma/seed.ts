@@ -1,7 +1,16 @@
 import { PrismaClient } from '@prisma/client';
+import { createHash } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
+
+function hashApiKey(value: string) {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function getApiKeyPrefix(value: string) {
+  return value.slice(0, 16);
+}
 
 async function main() {
   // Clean existing data
@@ -29,22 +38,29 @@ async function main() {
   console.log('Created user:', user);
 
   // Create seed project
+  const legacyApiKey = 'test-api-key-12345';
   const project = await prisma.project.create({
     data: {
       name: 'Default Project',
       description: 'Default project for testing',
       userId: user.id,
-      apiKey: 'test-api-key-12345',
+      apiKeyHash: hashApiKey(legacyApiKey),
+      apiKeyPrefix: getApiKeyPrefix(legacyApiKey),
       rateLimit: 1000,
       rateLimitWindow: 3600,
     },
   });
 
-  console.log('Created project:', project);
+  console.log('Created project:', {
+    ...project,
+    apiKey: legacyApiKey,
+  });
 
+  const managedApiKey = 'test-managed-api-key-12345';
   const apiKey = await prisma.apiKey.create({
     data: {
-      key: 'test-managed-api-key-12345',
+      keyHash: hashApiKey(managedApiKey),
+      keyPrefix: getApiKeyPrefix(managedApiKey),
       userId: user.id,
       projectId: project.id,
       name: 'Default ingest key',
@@ -54,7 +70,10 @@ async function main() {
     },
   });
 
-  console.log('Created API key:', apiKey);
+  console.log('Created API key:', {
+    ...apiKey,
+    key: managedApiKey,
+  });
 
   // Create notification channels
   const emailChannel = await prisma.notificationChannel.create({

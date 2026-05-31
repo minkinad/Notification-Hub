@@ -71,7 +71,7 @@ describe('ChannelsService', () => {
   });
 
   it('validates merged type and config on update', async () => {
-    jest.spyOn(service, 'findOne').mockResolvedValue({
+    prisma.notificationChannel.findFirst.mockResolvedValue({
       id: 'channel-1',
       projectId: 'project-1',
       type: ChannelType.EMAIL,
@@ -94,19 +94,20 @@ describe('ChannelsService', () => {
   });
 
   it('translates update unique conflicts into a domain conflict', async () => {
-    jest.spyOn(service, 'findOne').mockResolvedValue({
-      id: 'channel-1',
-      projectId: 'project-1',
-      type: ChannelType.EMAIL,
-      name: 'Email',
-      config: {
-        to: 'alerts@example.com',
-      },
-      active: true,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-    prisma.notificationChannel.findFirst.mockResolvedValue(null);
+    prisma.notificationChannel.findFirst
+      .mockResolvedValueOnce({
+        id: 'channel-1',
+        projectId: 'project-1',
+        type: ChannelType.EMAIL,
+        name: 'Email',
+        config: {
+          to: 'alerts@example.com',
+        },
+        active: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .mockResolvedValueOnce(null);
     prisma.notificationChannel.update.mockRejectedValue({ code: 'P2002' });
 
     await expect(
@@ -117,5 +118,28 @@ describe('ChannelsService', () => {
         },
       }),
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('masks sensitive config values in channel responses', async () => {
+    prisma.notificationChannel.findFirst.mockResolvedValue({
+      id: 'channel-1',
+      projectId: 'project-1',
+      type: ChannelType.TELEGRAM,
+      name: 'Telegram',
+      config: {
+        chatId: '@alerts',
+        botToken: 'very-secret-token',
+      },
+      active: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const result = await service.findOne('channel-1', 'user-1');
+
+    expect(result.config).toEqual({
+      chatId: '@alerts',
+      botToken: 'very...oken',
+    });
   });
 });

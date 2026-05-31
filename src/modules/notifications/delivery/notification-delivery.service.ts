@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   ChannelType,
   DeliveryStatus,
@@ -6,6 +7,7 @@ import {
   NotificationStatus,
   Prisma,
 } from '@prisma/client';
+import { safePostJson } from '@common/http/safe-http';
 import { PrismaService } from '@common/prisma/prisma.service';
 import {
   asJsonRecord,
@@ -29,6 +31,7 @@ export class NotificationDeliveryService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly queueService: NotificationDeliveryQueueService,
+    @Optional() private readonly configService?: ConfigService,
   ) {}
 
   async deliver(notificationId: string) {
@@ -218,30 +221,26 @@ export class NotificationDeliveryService {
     body: unknown,
     headers: Record<string, string>,
   ) {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        ...headers,
-      },
-      body: JSON.stringify(body),
+    const response = await safePostJson(url, body, headers, {
+      timeoutMs:
+        this.configService?.get<number>('DELIVERY_HTTP_TIMEOUT_MS', 5000) ??
+        5000,
+      maxResponseBytes:
+        this.configService?.get<number>(
+          'DELIVERY_HTTP_MAX_RESPONSE_BYTES',
+          32768,
+        ) ?? 32768,
+      blockPrivateNetworks:
+        this.configService?.get<boolean>(
+          'DELIVERY_HTTP_BLOCK_PRIVATE_NETWORKS',
+          true,
+        ) ?? true,
     });
-    const responseText = await response.text();
-    const jsonResponse = {
-      statusCode: response.status,
-      body: responseText.slice(0, 2000),
+
+    return {
+      statusCode: response.statusCode,
+      body: response.body,
     } satisfies Prisma.InputJsonObject;
-
-    if (!response.ok) {
-      throw new Error(
-        `Delivery provider responded with ${response.status}: ${responseText.slice(
-          0,
-          500,
-        )}`,
-      );
-    }
-
-    return jsonResponse;
   }
 
   private buildPayload(notification: NotificationForDelivery) {

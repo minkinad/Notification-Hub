@@ -6,11 +6,11 @@ import {
   NotFoundException,
   Optional,
 } from '@nestjs/common';
-import { randomUUID } from 'crypto';
 import { Prisma, Project } from '@prisma/client';
 import { AuditService } from '@common/audit/audit.service';
 import { isPrismaUniqueConstraintError } from '@common/prisma/prisma-errors';
 import { PrismaService } from '@common/prisma/prisma.service';
+import { generateApiKey, hashApiKey } from '@common/utils/api-keys';
 import { normalizePagination } from '@common/utils/pagination';
 import { CreateApiKeyDto } from './dto/create-api-key.dto';
 import { CreateProjectDto } from './dto/create-project.dto';
@@ -25,17 +25,19 @@ export class ProjectsService {
   ) {}
 
   async create(userId: string, createProjectDto: CreateProjectDto) {
+    const generatedApiKey = generateApiKey('pk_legacy');
     const project = await this.prisma.project.create({
       data: {
         ...createProjectDto,
         userId,
-        apiKey: `pk_${randomUUID()}`,
+        apiKeyHash: generatedApiKey.hash,
+        apiKeyPrefix: generatedApiKey.prefix,
       },
       select: {
         id: true,
         name: true,
         description: true,
-        apiKey: true,
+        apiKeyPrefix: true,
         rateLimit: true,
         rateLimitWindow: true,
         active: true,
@@ -54,7 +56,10 @@ export class ProjectsService {
       },
     });
 
-    return project;
+    return {
+      ...project,
+      apiKey: generatedApiKey.value,
+    };
   }
 
   async findAll(userId: string, skip = 0, take = 10) {
@@ -68,7 +73,7 @@ export class ProjectsService {
           id: true,
           name: true,
           description: true,
-          apiKey: true,
+          apiKeyPrefix: true,
           rateLimit: true,
           rateLimitWindow: true,
           active: true,
@@ -94,7 +99,7 @@ export class ProjectsService {
         id: true,
         name: true,
         description: true,
-        apiKey: true,
+        apiKeyPrefix: true,
         rateLimit: true,
         rateLimitWindow: true,
         active: true,
@@ -120,7 +125,7 @@ export class ProjectsService {
         id: true,
         name: true,
         description: true,
-        apiKey: true,
+        apiKeyPrefix: true,
         rateLimit: true,
         rateLimitWindow: true,
         active: true,
@@ -167,14 +172,16 @@ export class ProjectsService {
   async regenerateApiKey(id: string, userId: string) {
     await this.ensureOwnedProject(id, userId);
 
+    const generatedApiKey = generateApiKey('pk_legacy');
     const project = await this.prisma.project.update({
       where: { id },
       data: {
-        apiKey: `pk_${randomUUID()}`,
+        apiKeyHash: generatedApiKey.hash,
+        apiKeyPrefix: generatedApiKey.prefix,
       },
       select: {
         id: true,
-        apiKey: true,
+        apiKeyPrefix: true,
       },
     });
 
@@ -188,7 +195,10 @@ export class ProjectsService {
       },
     });
 
-    return project;
+    return {
+      ...project,
+      apiKey: generatedApiKey.value,
+    };
   }
 
   async createApiKey(
@@ -206,9 +216,11 @@ export class ProjectsService {
     }
 
     try {
+      const generatedApiKey = generateApiKey('pk');
       const apiKey = await this.prisma.apiKey.create({
         data: {
-          key: `pk_${randomUUID()}`,
+          keyHash: generatedApiKey.hash,
+          keyPrefix: generatedApiKey.prefix,
           userId,
           projectId,
           name: createApiKeyDto.name,
@@ -234,7 +246,10 @@ export class ProjectsService {
         },
       });
 
-      return apiKey;
+      return {
+        ...apiKey,
+        key: generatedApiKey.value,
+      };
     } catch (error) {
       if (isPrismaUniqueConstraintError(error)) {
         throw new ConflictException(
@@ -353,8 +368,9 @@ export class ProjectsService {
   }
 
   async verifyApiKey(apiKey: string) {
+    const apiKeyHash = hashApiKey(apiKey);
     const managedApiKey = await this.prisma.apiKey.findUnique({
-      where: { key: apiKey },
+      where: { keyHash: apiKeyHash },
       include: {
         project: true,
       },
@@ -385,7 +401,7 @@ export class ProjectsService {
     }
 
     const project = await this.prisma.project.findUnique({
-      where: { apiKey },
+      where: { apiKeyHash },
     });
 
     if (!project || !project.active) {
@@ -420,6 +436,7 @@ export class ProjectsService {
     scopes: true,
     active: true,
     lastUsed: true,
+    keyPrefix: true,
     createdAt: true,
     updatedAt: true,
     expiresAt: true,
@@ -429,7 +446,6 @@ export class ProjectsService {
 
   private readonly apiKeyCreatedSelect = {
     ...this.apiKeyListSelect,
-    key: true,
   } as const;
 
   private async findApiKeyForProject(projectId: string, apiKeyId: string) {

@@ -18,6 +18,7 @@ export class NotificationDeliveryQueueService {
       'deliver',
       { notificationId },
       {
+        jobId: delay === 0 ? notificationId : undefined,
         delay,
         attempts: 1,
         removeOnComplete: 1000,

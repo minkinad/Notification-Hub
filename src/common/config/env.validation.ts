@@ -20,4 +20,11 @@ export const envValidationSchema = Joi.object({
   APP_VERSION: Joi.string().default('1.0.0'),
   RATE_LIMIT_WINDOW_MS: Joi.number().integer().positive().default(60000),
   RATE_LIMIT_MAX_REQUESTS: Joi.number().integer().positive().default(100),
+  DELIVERY_HTTP_TIMEOUT_MS: Joi.number().integer().positive().default(5000),
+  DELIVERY_HTTP_MAX_RESPONSE_BYTES: Joi.number()
+    .integer()
+    .positive()
+    .default(32768),
+  DELIVERY_HTTP_BLOCK_PRIVATE_NETWORKS: Joi.boolean().default(true),
+  DELIVERY_OUTBOX_INTERVAL_MS: Joi.number().integer().positive().default(30000),
 });

@@ -3,7 +3,6 @@ import {
   Injectable,
   NotFoundException,
   Optional,
-  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ChannelType, EventStatus, Prisma } from '@prisma/client';
 import { AuditService } from '@common/audit/audit.service';
@@ -15,6 +14,7 @@ import {
   readStringArray,
 } from '@common/utils/json';
 import { normalizePagination } from '@common/utils/pagination';
+import { NotificationDeliveryOutboxService } from '@modules/notifications/delivery/notification-delivery-outbox.service';
 import { NotificationDeliveryQueueService } from '@modules/notifications/delivery/notification-delivery-queue.service';
 import { ProjectsService } from '@modules/projects/projects.service';
 import { CreateEventDto, EventListQueryDto } from './dto/create-event.dto';
@@ -29,6 +29,8 @@ export class EventsService {
     private readonly rateLimitService?: ProjectRateLimitService,
     @Optional()
     private readonly queueService?: NotificationDeliveryQueueService,
+    @Optional()
+    private readonly outboxService?: NotificationDeliveryOutboxService,
     @Optional() private readonly auditService?: AuditService,
   ) {}
 
@@ -214,6 +216,18 @@ export class EventsService {
         notificationIds.push(
           ...notifications.map((notification) => notification.id),
         );
+
+        if (this.outboxService) {
+          await Promise.all(
+            notificationIds.map((notificationId) =>
+              tx.deliveryOutbox.create({
+                data: {
+                  notificationId,
+                },
+              }),
+            ),
+          );
+        }
       }
 
       return {
@@ -226,6 +240,7 @@ export class EventsService {
     if (result.notificationIds.length > 0) {
       try {
         await this.queueService?.enqueueMany(result.notificationIds);
+        await this.outboxService?.markEnqueued(result.notificationIds);
       } catch (error) {
         await this.prisma.event.update({
           where: {
@@ -236,9 +251,13 @@ export class EventsService {
           },
         });
         const message = error instanceof Error ? error.message : String(error);
-        throw new ServiceUnavailableException(
-          `Notification delivery queue is unavailable: ${message}`,
-        );
+        return {
+          ...result.event,
+          notificationsCreated: result.notificationsCreated,
+          notificationsQueued: 0,
+          notificationsQueuePending: result.notificationIds.length,
+          queueError: message,
+        };
       }
     }
 
