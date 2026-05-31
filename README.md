@@ -16,11 +16,14 @@ It is designed as the core of a centralized notification platform for SaaS produ
 - User profile management
 - Admin-only user listing
 - Project isolation with per-project API keys
+- First-class project API key management with named keys, scopes, expiration, revocation, and last-used tracking
 - Configurable per-project `rateLimit` and `rateLimitWindow`
+- Redis-backed ingest rate limiting per managed API key or legacy project key
 - Channel management for `EMAIL`, `TELEGRAM`, `WEBHOOK`, and `SMS`
 - Event ingestion through authenticated API calls or `x-api-key`
-- Automatic notification creation for active project channels
-- Notification inspection and retry scheduling
+- Automatic notification creation and BullMQ delivery scheduling for active project channels
+- Notification inspection, retry scheduling, delivery logs, and status transitions
+- Audit logging for project, API key, channel, event, and notification retry writes
 - Prisma-based PostgreSQL persistence
 - Redis and BullMQ bootstrap modules for async expansion
 - Request validation, structured error responses, and Swagger docs
@@ -45,7 +48,8 @@ High-level flow:
 2. The client sends an event through the authenticated API or project API key.
 3. The event is stored in PostgreSQL.
 4. The system creates notification records for all active channels on the project.
-5. Operators inspect notifications and trigger retries when needed.
+5. Delivery workers process queued notifications, write delivery logs, and update event status.
+6. Operators inspect notifications and trigger retries when needed.
 
 ## Tech Stack
 
@@ -68,14 +72,18 @@ Implemented:
 
 - Authentication and authorization
 - Core CRUD APIs for users, projects, channels, events, notifications
-- Event-to-notification fan-out logic
+- Managed project API key lifecycle
+- Redis-backed ingest rate limiting
+- Event-to-notification fan-out and BullMQ delivery queueing
+- Delivery state machine with retry/backoff and delivery logs
+- Audit logs for write operations
 - Health endpoint
 - Validation, docs, tests, and local developer tooling
 
 Not included yet:
 
-- Real delivery workers for email, Telegram, SMS, or webhook dispatch
-- Delivery receipts from external providers
+- Provider-specific email and SMS integrations beyond HTTP-provider/mocked delivery
+- Delivery receipts and callbacks from external providers
 - Dead-letter queue processing
 - Metrics, tracing, and dashboards
 - Full e2e test environment with real infrastructure containers
@@ -146,6 +154,8 @@ The seed script creates a default admin account and sample project data.
 
 - Email: `admin@notification-hub.com`
 - Password: `admin123`
+- Legacy project API key: `test-api-key-12345`
+- Managed ingest API key: `test-managed-api-key-12345`
 
 ## API Overview
 
@@ -170,6 +180,10 @@ Projects:
 - `PATCH /projects/:id`
 - `DELETE /projects/:id`
 - `POST /projects/:id/regenerate-key`
+- `GET /projects/:id/api-keys`
+- `POST /projects/:id/api-keys`
+- `PATCH /projects/:id/api-keys/:keyId`
+- `DELETE /projects/:id/api-keys/:keyId`
 
 Channels:
 
@@ -248,6 +262,27 @@ Channel config rules:
 - `WEBHOOK`: requires a valid `url`
 - `SMS`: requires `phone`
 
+Delivery behavior:
+
+- `WEBHOOK` sends an HTTP `POST` to `config.url`.
+- `TELEGRAM` sends via the Telegram Bot API when `botToken` is configured and not a test token.
+- `EMAIL` and `SMS` can be delivered through an HTTP provider by setting `config.provider` to `http` and `config.deliveryUrl`; otherwise they use mock delivery and still produce delivery logs.
+- Failed deliveries are retried with exponential backoff until `maxRetries` is reached.
+
+### Create a managed API key
+
+```bash
+curl -X POST http://localhost:3000/api/v1/projects/<PROJECT_ID>/api-keys \
+  -H "Authorization: Bearer <JWT_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Production ingest",
+    "scopes": ["events:ingest"],
+    "rateLimit": 500,
+    "rateLimitWindow": 3600
+  }'
+```
+
 ### Ingest an event with project API key
 
 ```bash
@@ -283,6 +318,9 @@ The current test suite covers critical service behavior:
 - project ownership checks
 - event fan-out into notification records
 - notification creation behavior with and without active channels
+- managed API key verification and creation
+- ingest rate limiting
+- notification retry scheduling and delivery status transitions
 
 Run tests with:
 
@@ -296,14 +334,13 @@ npm test
 - Global validation strips unknown fields and rejects invalid payloads.
 - Responses are wrapped by a response interceptor for consistent API shape.
 - Errors are normalized by a global exception filter.
-- Redis and BullMQ are wired for future async processing, even though external delivery workers are not implemented yet.
+- Redis backs project ingest rate limits and BullMQ delivery scheduling.
+- Delivery workers process webhook and Telegram deliveries directly. Email and SMS use HTTP-provider delivery when configured, otherwise mock delivery is recorded for local workflows.
 
 ## Roadmap
 
-- Add worker processes for actual channel delivery
-- Introduce delivery execution history from external providers
-- Replace simple project API key usage with first-class API key management flows
-- Add audit logs to every write operation
+- Add provider-specific email and SMS adapters
+- Add dead-letter queue processing
 - Add e2e coverage against real Postgres and Redis
 - Add metrics and observability integrations
 
