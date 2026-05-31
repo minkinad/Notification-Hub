@@ -1,15 +1,15 @@
 import {
-  Controller,
-  Get,
-  Post,
-  Patch,
-  Delete,
   Body,
+  Controller,
+  Delete,
+  DefaultValuePipe,
+  Get,
   Param,
+  ParseIntPipe,
+  Patch,
+  Post,
   Query,
   UseGuards,
-  DefaultValuePipe,
-  ParseIntPipe,
   Version,
 } from '@nestjs/common';
 import {
@@ -19,11 +19,13 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { CurrentUser } from '@common/decorators/current-user.decorator';
-import { ProjectsService } from './projects.service';
-import { CreateProjectDto } from './dto/create-project.dto';
-import { UpdateProjectDto } from './dto/update-project.dto';
 import { JwtGuard } from '@common/guards/jwt.guard';
 import { JwtUser } from '@common/types/jwt-user.interface';
+import { CreateApiKeyDto } from './dto/create-api-key.dto';
+import { ProjectsService } from './projects.service';
+import { CreateProjectDto } from './dto/create-project.dto';
+import { UpdateApiKeyDto } from './dto/update-api-key.dto';
+import { UpdateProjectDto } from './dto/update-project.dto';
 
 @ApiTags('projects')
 @ApiBearerAuth()
@@ -92,5 +94,55 @@ export class ProjectsController {
     @CurrentUser() user: JwtUser,
   ) {
     return this.projectsService.regenerateApiKey(id, user.id);
+  }
+
+  @Get(':id/api-keys')
+  @Version('1')
+  @ApiOperation({ summary: 'List project API keys' })
+  @ApiResponse({ status: 200, description: 'API keys list retrieved' })
+  async listApiKeys(@Param('id') id: string, @CurrentUser() user: JwtUser) {
+    return this.projectsService.listApiKeys(id, user.id);
+  }
+
+  @Post(':id/api-keys')
+  @Version('1')
+  @ApiOperation({ summary: 'Create project API key' })
+  @ApiResponse({ status: 201, description: 'API key created' })
+  async createApiKey(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtUser,
+    @Body() createApiKeyDto: CreateApiKeyDto,
+  ) {
+    return this.projectsService.createApiKey(id, user.id, createApiKeyDto);
+  }
+
+  @Patch(':id/api-keys/:keyId')
+  @Version('1')
+  @ApiOperation({ summary: 'Update project API key metadata' })
+  @ApiResponse({ status: 200, description: 'API key updated' })
+  async updateApiKey(
+    @Param('id') id: string,
+    @Param('keyId') keyId: string,
+    @CurrentUser() user: JwtUser,
+    @Body() updateApiKeyDto: UpdateApiKeyDto,
+  ) {
+    return this.projectsService.updateApiKey(
+      id,
+      keyId,
+      user.id,
+      updateApiKeyDto,
+    );
+  }
+
+  @Delete(':id/api-keys/:keyId')
+  @Version('1')
+  @ApiOperation({ summary: 'Revoke project API key' })
+  @ApiResponse({ status: 200, description: 'API key revoked' })
+  async revokeApiKey(
+    @Param('id') id: string,
+    @Param('keyId') keyId: string,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.projectsService.revokeApiKey(id, keyId, user.id);
   }
 }

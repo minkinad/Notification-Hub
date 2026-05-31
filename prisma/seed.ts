@@ -42,6 +42,20 @@ async function main() {
 
   console.log('Created project:', project);
 
+  const apiKey = await prisma.apiKey.create({
+    data: {
+      key: 'test-managed-api-key-12345',
+      userId: user.id,
+      projectId: project.id,
+      name: 'Default ingest key',
+      scopes: ['events:ingest'],
+      rateLimit: 1000,
+      rateLimitWindow: 3600,
+    },
+  });
+
+  console.log('Created API key:', apiKey);
+
   // Create notification channels
   const emailChannel = await prisma.notificationChannel.create({
     data: {

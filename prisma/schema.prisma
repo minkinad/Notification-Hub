@@ -44,6 +44,7 @@ model Project {
   events        Event[]
   notifications Notification[]
   channels      NotificationChannel[]
+  apiKeys       ApiKey[]
   auditLogs     AuditLog[]
 
   @@index([userId])
@@ -51,31 +52,37 @@ model Project {
 }
 
 model ApiKey {
-  id        String   @id @default(cuid())
-  key       String   @unique
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  projectId String
-  name      String
-  active    Boolean  @default(true)
-  lastUsed  DateTime?
-  createdAt DateTime @default(now())
-  expiresAt DateTime?
+  id              String    @id @default(cuid())
+  key             String    @unique
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId       String
+  project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name            String
+  scopes          Json      @default("[]")
+  rateLimit       Int?
+  rateLimitWindow Int?
+  active          Boolean   @default(true)
+  lastUsed        DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  expiresAt       DateTime?
 
+  @@unique([projectId, name])
   @@index([userId])
   @@index([projectId])
   @@map("api_keys")
 }
 
 model Event {
-  id        String   @id @default(cuid())
+  id        String      @id @default(cuid())
   projectId String
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   type      String
   data      Json
   status    EventStatus @default(PENDING)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
 
   notifications Notification[]
 
@@ -86,15 +93,15 @@ model Event {
 }
 
 model NotificationChannel {
-  id        String   @id @default(cuid())
+  id        String      @id @default(cuid())
   projectId String
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   type      ChannelType
   config    Json
   name      String
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  active    Boolean     @default(true)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
 
   notifications Notification[]
 
@@ -104,25 +111,25 @@ model NotificationChannel {
 }
 
 model Notification {
-  id            String   @id @default(cuid())
-  projectId     String
-  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  eventId       String
-  event         Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  channelId     String
-  channel       NotificationChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  recipient     String
-  subject       String?
-  template      String
-  templateData  Json     @default("{}")
-  status        NotificationStatus @default(PENDING)
-  retryCount    Int      @default(0)
-  maxRetries    Int      @default(3)
-  nextRetryAt   DateTime?
-  lastError     String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  sentAt        DateTime?
+  id           String              @id @default(cuid())
+  projectId    String
+  project      Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  eventId      String
+  event        Event               @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  channelId    String
+  channel      NotificationChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  recipient    String
+  subject      String?
+  template     String
+  templateData Json                @default("{}")
+  status       NotificationStatus  @default(PENDING)
+  retryCount   Int                 @default(0)
+  maxRetries   Int                 @default(3)
+  nextRetryAt  DateTime?
+  lastError    String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  sentAt       DateTime?
 
   deliveryLogs DeliveryLog[]
 
@@ -135,15 +142,15 @@ model Notification {
 }
 
 model DeliveryLog {
-  id             String   @id @default(cuid())
+  id             String         @id @default(cuid())
   notificationId String
-  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  notification   Notification   @relation(fields: [notificationId], references: [id], onDelete: Cascade)
   status         DeliveryStatus
   statusCode     Int?
   response       Json?
   error          String?
-  attemptedAt    DateTime @default(now())
-  createdAt      DateTime @default(now())
+  attemptedAt    DateTime       @default(now())
+  createdAt      DateTime       @default(now())
 
   @@index([notificationId])
   @@index([status])
